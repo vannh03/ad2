@@ -234,7 +234,10 @@ class BasePredictor:
         self.dataset = load_inference_source(source=source, batch=self.args.batch, vid_stride=self.args.vid_stride, buffer=self.args.stream_buffer, channels=getattr(self.model, 'channels', 3))
         self.source_type = self.dataset.source_type
         if self.source_type.stream or self.source_type.screenshot or len(self.dataset) > 1000 or any(getattr(self.dataset, 'video_flag', [False])):
-            import torchvision
+            try:
+                import torchvision
+            except Exception:
+                pass
             if not getattr(self, 'stream', True):
                 LOGGER.warning(STREAM_WARNING)
         self.vid_writer = {}

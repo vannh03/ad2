@@ -66,9 +66,9 @@ def parse_opt():
 
 
 def main(opt):
-    frame_queue = Queue(maxsize=30)
-    detect_queue = Queue(maxsize=30)
-    output_queue = Queue(maxsize=30)
+    frame_queue = Queue(maxsize=2)
+    detect_queue = Queue(maxsize=2)
+    output_queue = Queue(maxsize=2)
     stop_event = Event()
     processes = [
         Process(

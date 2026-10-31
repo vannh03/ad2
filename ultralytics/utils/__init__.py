@@ -1,13 +1,46 @@
 import contextlib
+import functools
+import importlib
+import sys
+import types
 try:
     import importlib.metadata as importlib_metadata
+    if importlib_metadata is None:
+        raise ImportError
 except Exception:
     try:
-        import pkg_resources as importlib_metadata
+        import importlib_metadata
     except Exception:
-        importlib_metadata = None
+        class _FallbackMetadata(types.ModuleType):
+            class PackageNotFoundError(Exception):
+                pass
+
+            @staticmethod
+            def version(name):
+                try:
+                    import pkg_resources
+                    return pkg_resources.get_distribution(name).version
+                except Exception:
+                    try:
+                        mod = __import__(name.replace('-', '_'))
+                        return getattr(mod, '__version__', '0.0.0')
+                    except Exception:
+                        return '0.0.0'
+
+            @staticmethod
+            def distributions():
+                return []
+
+            @staticmethod
+            def distribution(name):
+                raise _FallbackMetadata.PackageNotFoundError(name)
+
+        importlib_metadata = _FallbackMetadata('importlib.metadata')
+    sys.modules['importlib.metadata'] = importlib_metadata
+    setattr(importlib, 'metadata', importlib_metadata)
 import json
 import logging
+import math
 import os
 import platform
 import re
@@ -17,21 +50,89 @@ import threading
 import time
 import warnings
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePath
 from threading import Lock
 from types import SimpleNamespace
 from urllib.parse import unquote
 import subprocess
+
+if not hasattr(functools, 'cached_property'):
+    class cached_property(object):
+        def __init__(self, func):
+            self.func = func
+            self.attrname = func.__name__
+            self.__doc__ = func.__doc__
+
+        def __get__(self, instance, owner=None):
+            if instance is None:
+                return self
+            val = self.func(instance)
+            instance.__dict__[self.attrname] = val
+            return val
+    functools.cached_property = cached_property
+
+_orig_lru_cache = functools.lru_cache
+if not getattr(_orig_lru_cache, '_py36_patched', False):
+    def _compat_lru_cache(maxsize=128, typed=False):
+        if callable(maxsize) and isinstance(typed, bool):
+            user_function = maxsize
+            wrapper = _orig_lru_cache(maxsize=128, typed=typed)
+            return wrapper(user_function)
+        return _orig_lru_cache(maxsize=maxsize, typed=typed)
+    _compat_lru_cache._py36_patched = True
+    functools.lru_cache = _compat_lru_cache
+    lru_cache = _compat_lru_cache
+
+_orig_unlink = Path.unlink
+if not getattr(_orig_unlink, '_py36_patched', False):
+    def _compat_unlink(self, missing_ok=False):
+        try:
+            _orig_unlink(self)
+        except FileNotFoundError:
+            if not missing_ok:
+                raise
+    _compat_unlink._py36_patched = True
+    Path.unlink = _compat_unlink
+
+if not hasattr(PurePath, 'is_relative_to'):
+    def _is_relative_to(self, *other):
+        try:
+            self.relative_to(*other)
+            return True
+        except ValueError:
+            return False
+    PurePath.is_relative_to = _is_relative_to
+
+if not hasattr(contextlib, 'nullcontext'):
+    class _nullcontext(object):
+        def __init__(self, enter_result=None):
+            self.enter_result = enter_result
+        def __enter__(self):
+            return self.enter_result
+        def __exit__(self, *excinfo):
+            pass
+    contextlib.nullcontext = _nullcontext
+
+if not hasattr(math, 'prod'):
+    def _math_prod(iterable, start=1):
+        res = start
+        for x in iterable:
+            res *= x
+        return res
+    math.prod = _math_prod
+
 _orig_subprocess_run = subprocess.run
-def _patched_subprocess_run(*args, **kwargs):
-    if 'capture_output' in kwargs:
-        if kwargs.pop('capture_output'):
-            kwargs['stdout'] = subprocess.PIPE
-            kwargs['stderr'] = subprocess.PIPE
-    if 'text' in kwargs:
-        kwargs['universal_newlines'] = kwargs.pop('text')
-    return _orig_subprocess_run(*args, **kwargs)
-subprocess.run = _patched_subprocess_run
+if not getattr(_orig_subprocess_run, '_py36_patched', False):
+    def _patched_subprocess_run(*args, **kwargs):
+        if 'capture_output' in kwargs:
+            if kwargs.pop('capture_output'):
+                kwargs['stdout'] = subprocess.PIPE
+                kwargs['stderr'] = subprocess.PIPE
+        if 'text' in kwargs:
+            kwargs['universal_newlines'] = kwargs.pop('text')
+        return _orig_subprocess_run(*args, **kwargs)
+    _patched_subprocess_run._py36_patched = True
+    subprocess.run = _patched_subprocess_run
 import cv2
 import numpy as np
 import torch

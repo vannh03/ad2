@@ -9,7 +9,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import cv2
 import numpy as np
-from filelock import AsyncFileLock, Timeout
+try:
+    from filelock import AsyncFileLock, Timeout
+except Exception:
+    AsyncFileLock = None
+    Timeout = Exception
 from PIL import Image
 from ultralytics.data.utils import get_split_fraction
 from ultralytics.utils import ASSETS_URL, DATASETS_DIR, LOGGER, NUM_THREADS, TQDM, YAML, clean_url

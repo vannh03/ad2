@@ -43,6 +43,7 @@ def detector_tracker_process(weights, imgsz, conf_thres, iou_thres,
             path, im, im0s, s, current_speed, safe_distance = data[:6]
             t_capture = time.time()
         t_infer_start = time.time()
+        t_capture = t_infer_start
         im_tensor = torch.from_numpy(im).to(device_t).float() / 255.0
         if len(im_tensor.shape) == 3:
             im_tensor = im_tensor[None]

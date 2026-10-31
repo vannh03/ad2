@@ -234,7 +234,10 @@ class AutoBackend(nn.Module):
         """
         from ultralytics.utils.nms import non_max_suppression
         if not self.end2end:
-            import torchvision
+            try:
+                import torchvision
+            except Exception:
+                pass
         if self.format in {'pt', 'torchscript', 'onnx', 'engine', 'saved_model', 'pb', 'triton'} and (self.device.type != 'cpu' or self.format == 'triton'):
             im = im if im is not None else torch.empty(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)
             for _ in range(2 if self.format == 'torchscript' else 1):

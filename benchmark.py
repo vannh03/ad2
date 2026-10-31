@@ -27,7 +27,9 @@ def parse_opt():
     default_weights = str(default_engine) if default_engine.exists() else str(MODEL_DETECTION_PATH)
     
     # Tìm video mẫu mặc định nếu có
-    sample_videos = list((ROOT / "runs" / "mlp_dataset_videos").glob("*.mp4")) if (ROOT / "runs" / "mlp_dataset_videos").exists() else []
+    sample_videos = list(ROOT.glob("*.MP4")) + list(ROOT.glob("*.mp4"))
+    if not sample_videos and (ROOT / "runs" / "mlp_dataset_videos").exists():
+        sample_videos = list((ROOT / "runs" / "mlp_dataset_videos").glob("*.mp4"))
     default_source = str(sample_videos[0]) if sample_videos else "0"
 
     parser.add_argument('--source', type=str, default=default_source, help='đường dẫn video hoặc 0 cho webcam')
@@ -52,9 +54,9 @@ def run_benchmark():
     print(f" • Frame Warmup   : {opt.warmup} frames (bỏ qua khi tính trung bình)")
     print("=" * 70)
 
-    frame_queue = Queue(maxsize=30)
-    detect_queue = Queue(maxsize=30)
-    output_queue = Queue(maxsize=30)
+    frame_queue = Queue(maxsize=2)
+    detect_queue = Queue(maxsize=2)
+    output_queue = Queue(maxsize=2)
     stop_event = Event()
 
     processes = [

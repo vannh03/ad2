@@ -14,7 +14,21 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from torch import nn
-from torch.nn.utils.fusion import fuse_conv_bn_weights
+try:
+    from torch.nn.utils.fusion import fuse_conv_bn_weights
+except ImportError:
+    def fuse_conv_bn_weights(conv_w, conv_b, bn_rm, bn_rv, bn_eps, bn_w, bn_b, transpose=False):
+        if conv_b is None:
+            conv_b = torch.zeros_like(bn_rm)
+        if bn_w is None:
+            bn_w = torch.ones_like(bn_rm)
+        if bn_b is None:
+            bn_b = torch.zeros_like(bn_rm)
+        bn_var_rsqrt = torch.rsqrt(bn_rv + bn_eps)
+        shape = [1, -1] + [1] * (conv_w.dim() - 2) if transpose else [-1, 1] + [1] * (conv_w.dim() - 2)
+        fused_w = conv_w * (bn_w * bn_var_rsqrt).reshape(shape)
+        fused_b = (conv_b - bn_rm) * bn_var_rsqrt * bn_w + bn_b
+        return torch.nn.Parameter(fused_w), torch.nn.Parameter(fused_b)
 from ultralytics import __version__
 from ultralytics.utils import DEFAULT_CFG_DICT, DEFAULT_CFG_KEYS, LOCAL_RANK, LOGGER, NUM_THREADS, PYTHON_VERSION, TORCH_VERSION, TORCHVISION_VERSION, WINDOWS, colorstr
 from ultralytics.utils.checks import check_requirements, check_version
@@ -117,12 +131,12 @@ def autocast(enabled, device='cuda'):
     else:
         return torch.cuda.amp.autocast(enabled)
 
-@functools.lru_cache
+@functools.lru_cache()
 def get_cpu_info():
     """Return a string with system CPU information, i.e. 'Apple M2'."""
     return CPUInfo.name()
 
-@functools.lru_cache
+@functools.lru_cache()
 def get_gpu_info(index):
     """Return a string with system GPU information, i.e. 'Tesla T4, 15102MiB'."""
     properties = torch.cuda.get_device_properties(index)

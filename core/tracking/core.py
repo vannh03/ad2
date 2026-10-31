@@ -86,9 +86,8 @@ class ObjectTrackBase(metaclass=ABCMeta):
 			self.class_colors = self.names
 			self.names = {key:key for key in self.class_colors.keys()}
 		else :
-			rng = np.random.default_rng()
 			self.class_colors = [
-				rng.integers(low=0, high=255, size=3, dtype=np.uint8).tolist()
+				np.random.randint(0, 255, size=3, dtype=np.uint8).tolist()
 				for _ in self.names
 			]
 

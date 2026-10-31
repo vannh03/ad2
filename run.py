@@ -6,10 +6,16 @@ Người dùng chỉ cần gõ:
     python3 run.py
 Hệ thống sẽ tự động cấu hình và đo đạc FPS & Latency trung bình.
 """
+import contextlib
+import functools
+import importlib
+import math
 import os
+import subprocess
 import sys
 import time
-from pathlib import Path
+import types
+from pathlib import Path, PurePath
 from multiprocessing import Process, Queue, Event
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -17,17 +23,44 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import subprocess
+if not hasattr(functools, "cached_property"):
+    class cached_property(object):
+        def __init__(self, func):
+            self.func = func
+            self.attrname = func.__name__
+            self.__doc__ = func.__doc__
+
+        def __get__(self, instance, owner=None):
+            if instance is None:
+                return self
+            val = self.func(instance)
+            instance.__dict__[self.attrname] = val
+            return val
+    functools.cached_property = cached_property
+
+_orig_lru_cache = functools.lru_cache
+if not getattr(_orig_lru_cache, "_py36_patched", False):
+    def _compat_lru_cache(maxsize=128, typed=False):
+        if callable(maxsize) and isinstance(typed, bool):
+            user_function = maxsize
+            wrapper = _orig_lru_cache(maxsize=128, typed=typed)
+            return wrapper(user_function)
+        return _orig_lru_cache(maxsize=maxsize, typed=typed)
+    _compat_lru_cache._py36_patched = True
+    functools.lru_cache = _compat_lru_cache
+
 _orig_subprocess_run = subprocess.run
-def _patched_subprocess_run(*args, **kwargs):
-    if 'capture_output' in kwargs:
-        if kwargs.pop('capture_output'):
-            kwargs['stdout'] = subprocess.PIPE
-            kwargs['stderr'] = subprocess.PIPE
-    if 'text' in kwargs:
-        kwargs['universal_newlines'] = kwargs.pop('text')
-    return _orig_subprocess_run(*args, **kwargs)
-subprocess.run = _patched_subprocess_run
+if not getattr(_orig_subprocess_run, "_py36_patched", False):
+    def _patched_subprocess_run(*args, **kwargs):
+        if 'capture_output' in kwargs:
+            if kwargs.pop('capture_output'):
+                kwargs['stdout'] = subprocess.PIPE
+                kwargs['stderr'] = subprocess.PIPE
+        if 'text' in kwargs:
+            kwargs['universal_newlines'] = kwargs.pop('text')
+        return _orig_subprocess_run(*args, **kwargs)
+    _patched_subprocess_run._py36_patched = True
+    subprocess.run = _patched_subprocess_run
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -47,17 +80,13 @@ def check_env():
     except ImportError:
         missing.append(("NumPy", "sudo apt-get install -y python3-numpy"))
     try:
-        import pandas
+        import scipy
     except ImportError:
-        missing.append(("Pandas", "sudo apt-get install -y python3-pandas"))
+        missing.append(("SciPy", "sudo apt-get install -y python3-scipy"))
     try:
-        import sklearn
+        import yaml
     except ImportError:
-        missing.append(("Scikit-learn", "sudo apt-get install -y python3-sklearn"))
-    try:
-        import joblib
-    except ImportError:
-        missing.append(("Joblib", "sudo apt-get install -y python3-joblib"))
+        missing.append(("PyYAML", "sudo apt-get install -y python3-yaml"))
 
     if missing:
         print("\n" + "=" * 65)
@@ -120,9 +149,9 @@ def main():
     print("=" * 65)
     print("⏳ Đang khởi động các tiến trình xử lý ngầm (Đợi 2-3 giây)...")
 
-    frame_queue = Queue(maxsize=30)
-    detect_queue = Queue(maxsize=30)
-    output_queue = Queue(maxsize=30)
+    frame_queue = Queue(maxsize=2)
+    detect_queue = Queue(maxsize=2)
+    output_queue = Queue(maxsize=2)
     stop_event = Event()
 
     processes = [

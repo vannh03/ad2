@@ -1,8 +1,11 @@
 import numpy as np
 import scipy
-import lap
+try:
+    import lap
+except ImportError:
+    lap = None
 from typing import Tuple, List
-from scipy.spatial.distance import cdist
+from scipy.optimize import linear_sum_assignment
 
 from .dtypes import kalman_filter
 
@@ -21,14 +24,29 @@ def linear_assignment(cost_matrix, thresh) -> Tuple[np.ndarray, List[int], List[
     if cost_matrix.size == 0:
         return np.empty((0, 2), dtype=int), tuple(range(cost_matrix.shape[0])), tuple(range(cost_matrix.shape[1]))
     matches, unmatched_a, unmatched_b = [], [], []
-    cost, x, y = lap.lapjv(cost_matrix, extend_cost=True, cost_limit=thresh)
-    for ix, mx in enumerate(x):
-        if mx >= 0:
-            matches.append([ix, mx])
-    unmatched_a = np.where(x < 0)[0]
-    unmatched_b = np.where(y < 0)[0]
-    matches = np.asarray(matches)
-    return matches, unmatched_a, unmatched_b
+    if lap is not None:
+        cost, x, y = lap.lapjv(cost_matrix, extend_cost=True, cost_limit=thresh)
+        for ix, mx in enumerate(x):
+            if mx >= 0:
+                matches.append([ix, mx])
+        unmatched_a = np.where(x < 0)[0]
+        unmatched_b = np.where(y < 0)[0]
+        matches = np.asarray(matches)
+        return matches, unmatched_a, unmatched_b
+    else:
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        for r, c in zip(row_ind, col_ind):
+            if cost_matrix[r, c] <= thresh:
+                matches.append([r, c])
+        if len(matches) > 0:
+            matches = np.asarray(matches, dtype=int)
+            unmatched_a = np.array([i for i in range(cost_matrix.shape[0]) if i not in matches[:, 0]])
+            unmatched_b = np.array([j for j in range(cost_matrix.shape[1]) if j not in matches[:, 1]])
+        else:
+            matches = np.empty((0, 2), dtype=int)
+            unmatched_a = np.arange(cost_matrix.shape[0])
+            unmatched_b = np.arange(cost_matrix.shape[1])
+        return matches, unmatched_a, unmatched_b
 
 
 def ious(bboxes1, bboxes2) -> np.ndarray:

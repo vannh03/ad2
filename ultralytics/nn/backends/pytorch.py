@@ -95,7 +95,10 @@ class TorchScriptBackend(BaseBackend):
         Args:
             weight (str): Path to the .torchscript model file.
         """
-        import torchvision
+        try:
+            import torchvision
+        except Exception:
+            pass
         LOGGER.info(f'Loading {weight} for TorchScript inference...')
         self.model = torch.jit.load(weight, map_location=self.device)
         self.model.half() if self.fp16 else self.model.float()

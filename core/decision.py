@@ -5,8 +5,14 @@ import platform
 import threading
 import torch
 import torch.nn as nn
-import pandas as pd
-import joblib
+try:
+    import pandas as pd
+except Exception:
+    pd = None
+try:
+    import joblib
+except Exception:
+    joblib = None
 import numpy as np
 import cv2
 from configs.settings import (
@@ -133,26 +139,47 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+class FastMLPPreprocessor(object):
+    """Bộ tiền xử lý NumPy thuần túy tương thích 100% với preprocessor.pkl (tránh xung đột phiên bản sklearn/joblib/pickle trên Python 3.6 Jetson Nano)."""
+    NUMERIC_COLS = ("x", "dx", "y", "dy", "angle_sin", "angle_cos", "distance", "speed")
+    MEAN = np.array([
+        1233.9039939637828, -0.895521730382294, 977.0777665995977, 0.3802507042253521,
+        0.8798874608384536, -0.035436811594276765, 5.239517102615694, 19.79678068410463
+    ], dtype=np.float64)
+    SCALE = np.array([
+        563.4369580114202, 14.0677538760512, 68.82318914893169, 6.331145111567643,
+        0.12976876092242284, 0.4557437408587742, 3.8257684711148836, 11.159577353035347
+    ], dtype=np.float64)
+    CATEGORIES = ("None", "left", "right")
+
+    def transform(self, X):
+        if isinstance(X, dict):
+            rows = [X]
+        elif isinstance(X, (list, tuple)):
+            rows = X
+        elif hasattr(X, "to_dict"):
+            rows = X.to_dict("records")
+        else:
+            rows = list(X)
+        out = np.zeros((len(rows), 11), dtype=np.float32)
+        for i, r in enumerate(rows):
+            vals = np.array([float(r.get(c, 0.0)) for c in self.NUMERIC_COLS], dtype=np.float64)
+            out[i, :8] = ((vals - self.MEAN) / self.SCALE).astype(np.float32)
+            roi_val = str(r.get("roi_side", "None"))
+            for j, cat in enumerate(self.CATEGORIES):
+                if roi_val == cat:
+                    out[i, 8 + j] = 1.0
+        return out
+
+
 def load_mlp_model():
-    if not SCALER_PATH.exists() or not MODEL_MLP_PATH.exists():
+    if not MODEL_MLP_PATH.exists():
         raise FileNotFoundError(
-            f"Không tìm thấy file mô hình tại {SCALER_PATH} hoặc {MODEL_MLP_PATH}. Vui lòng kiểm tra thư mục models/decision/."
+            f"Không tìm thấy file mô hình tại {MODEL_MLP_PATH}. Vui lòng kiểm tra thư mục models/decision/."
         )
-    import sklearn.compose._column_transformer
-    if not hasattr(sklearn.compose._column_transformer, '_RemainderColsList'):
-        class _RemainderColsList(list):
-            pass
-        sklearn.compose._column_transformer._RemainderColsList = _RemainderColsList
-    preprocessor = joblib.load(str(SCALER_PATH))
+    preprocessor = FastMLPPreprocessor()
     device_torch = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    _dummy = pd.DataFrame([{
-        "x": 0.0, "dx": 0.0, "y": 0.0, "dy": 0.0,
-        "angle_sin": 0.0, "angle_cos": 1.0,
-        "distance": 0.0,
-        "roi_side": 'None',
-        "speed": 0.0
-    }])
-    input_dim = preprocessor.transform(_dummy).shape[1]
+    input_dim = 11
     mlp_model = MLP(input_dim=input_dim)
     mlp_model.load_state_dict(torch.load(str(MODEL_MLP_PATH), map_location=device_torch))
     mlp_model.to(device_torch)
@@ -275,7 +302,7 @@ def feature_mlp_rule_process(detect_queue, output_queue, stop_event):
                 y_change = y_coords[-1] - y_coords[0]
                 angle_change = angle_coords[-1] - angle_coords[0]
 
-                X_df = pd.DataFrame([{
+                row_dict = {
                     "x": float(centroid[0]),
                     "dx": float(x_change),
                     "y": float(centroid[1]),
@@ -285,10 +312,13 @@ def feature_mlp_rule_process(detect_queue, output_queue, stop_event):
                     "distance": float(object_distance),
                     "roi_side": roi_side if roi_side is not None else 'none',
                     "speed": float(current_speed if current_speed is not None else 0.0)
-                }])
+                }
 
                 try:
-                    X_scaled = preprocessor.transform(X_df)
+                    if isinstance(preprocessor, FastMLPPreprocessor) or pd is None:
+                        X_scaled = preprocessor.transform(row_dict)
+                    else:
+                        X_scaled = preprocessor.transform(pd.DataFrame([row_dict]))
                     X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device_torch)
                     with torch.no_grad():
                         outputs = mlp_model(X_tensor)

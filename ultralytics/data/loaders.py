@@ -3,7 +3,6 @@ import math
 import os
 import time
 import urllib
-from dataclasses import dataclass
 from functools import partial
 from io import BytesIO
 from multiprocessing.pool import ThreadPool

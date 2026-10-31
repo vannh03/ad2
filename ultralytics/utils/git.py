@@ -1,5 +1,19 @@
 import zlib
-from functools import cached_property
+try:
+    from functools import cached_property
+except ImportError:
+    class cached_property(object):
+        def __init__(self, func):
+            self.func = func
+            self.attrname = func.__name__
+            self.__doc__ = func.__doc__
+
+        def __get__(self, instance, owner=None):
+            if instance is None:
+                return self
+            val = self.func(instance)
+            instance.__dict__[self.attrname] = val
+            return val
 from pathlib import Path
 
 class GitRepo:

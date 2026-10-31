@@ -11,7 +11,39 @@ import shutil
 import subprocess
 import sys
 import time
-from importlib import metadata
+try:
+    from importlib import metadata
+    if metadata is None:
+        raise ImportError
+except ImportError:
+    try:
+        import importlib_metadata as metadata
+    except ImportError:
+        class _FallbackMetadata(object):
+            class PackageNotFoundError(Exception):
+                pass
+
+            @staticmethod
+            def version(name):
+                try:
+                    import pkg_resources
+                    return pkg_resources.get_distribution(name).version
+                except Exception:
+                    try:
+                        mod = __import__(name.replace('-', '_'))
+                        return getattr(mod, '__version__', '0.0.0')
+                    except Exception:
+                        raise _FallbackMetadata.PackageNotFoundError(name)
+
+            @staticmethod
+            def distributions():
+                return []
+
+            @staticmethod
+            def distribution(name):
+                raise _FallbackMetadata.PackageNotFoundError(name)
+
+        metadata = _FallbackMetadata()
 from pathlib import Path
 from types import SimpleNamespace
 import cv2
@@ -131,7 +163,7 @@ def get_distribution_name(import_name):
             return dist.metadata['Name']
     return import_name
 
-@functools.lru_cache
+@functools.lru_cache()
 def parse_version(version='0.0.0'):
     """Convert a version string to a tuple of integers from its release segments, ignoring prefixes and suffixes.
 
@@ -160,7 +192,8 @@ def is_ascii(s):
     Returns:
         (bool): True if the string is composed only of ASCII characters, False otherwise.
     """
-    return str(s).isascii()
+    s_str = str(s)
+    return s_str.isascii() if hasattr(s_str, 'isascii') else all(ord(c) < 128 for c in s_str)
 
 def check_imgsz(imgsz, stride=32, min_dim=1, max_dim=2, floor=0):
     """Verify image size is a multiple of the given stride in each dimension. If the image size is not a multiple of the
@@ -200,7 +233,7 @@ def check_imgsz(imgsz, stride=32, min_dim=1, max_dim=2, floor=0):
     sz = [sz[0], sz[0]] if min_dim == 2 and len(sz) == 1 else sz[0] if min_dim == 1 and len(sz) == 1 else sz
     return sz
 
-@functools.lru_cache
+@functools.lru_cache()
 def check_uv():
     """Check if uv package manager is installed and can run successfully."""
     try:
@@ -208,7 +241,7 @@ def check_uv():
     except FileNotFoundError:
         return False
 
-@functools.lru_cache
+@functools.lru_cache()
 def check_version(current='0.0.0', required='0.0.0', name='version', hard=False, verbose=False, msg=''):
     """Check current version against the required version or range.
 
@@ -309,7 +342,7 @@ def check_pip_update_available():
     return False
 
 @ThreadingLocked()
-@functools.lru_cache
+@functools.lru_cache()
 def check_font(font='Arial.ttf'):
     """Find font locally or download to user's configuration directory if it does not already exist.
 
@@ -481,6 +514,8 @@ def check_torchvision():
     This function checks the installed versions of PyTorch and Torchvision, and warns if they're incompatible according
     to the compatibility table based on: https://github.com/pytorch/vision#installation.
     """
+    if not TORCHVISION_VERSION or TORCHVISION_VERSION.startswith('0.0'):
+        return
     compatibility_table = {'2.10': ['0.25'], '2.9': ['0.24'], '2.8': ['0.23'], '2.7': ['0.22'], '2.6': ['0.21'], '2.5': ['0.20'], '2.4': ['0.19'], '2.3': ['0.18'], '2.2': ['0.17'], '2.1': ['0.16'], '2.0': ['0.15'], '1.13': ['0.14'], '1.12': ['0.13']}
     v_torch = '.'.join(TORCH_VERSION.split('+', 1)[0].split('.')[:2])
     if v_torch in compatibility_table:
@@ -621,7 +656,7 @@ def check_is_path_safe(basedir, path):
     path_resolved = Path(path).resolve()
     return path_resolved.exists() and path_resolved.parts[:len(base_dir_resolved.parts)] == base_dir_resolved.parts
 
-@functools.lru_cache
+@functools.lru_cache()
 def check_imshow(warn=False):
     """Check if environment supports image displays.
 

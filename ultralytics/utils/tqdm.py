@@ -5,7 +5,10 @@ import time
 import unicodedata
 from functools import lru_cache
 from typing import IO, Any
-from typing_extensions import Self
+try:
+    from typing_extensions import Self
+except Exception:
+    Self = Any
 
 @lru_cache(maxsize=1)
 def is_noninteractive_console():

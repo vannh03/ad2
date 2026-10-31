@@ -111,8 +111,11 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
         else:
             boxes = x[:, :4] + c
             if use_torchvision:
-                import torchvision
-                i = torchvision.ops.nms(boxes, scores, iou_thres)
+                try:
+                    import torchvision
+                    i = torchvision.ops.nms(boxes, scores, iou_thres)
+                except Exception:
+                    i = TorchNMS.nms(boxes, scores, iou_thres)
             else:
                 i = TorchNMS.nms(boxes, scores, iou_thres)
         i = i[:max_det]

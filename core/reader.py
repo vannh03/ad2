@@ -29,10 +29,9 @@ def video_reader_process(source, imgsz, stride, frame_queue, stop_event):
                 path, im, im0s, vid_cap, s = data
             if frame_count == 1 or frame_count % 5 == 0:
                 current_speed, safe_distance = safe_distance_estimation(im0s)
-            t_capture = time.time()
             while not stop_event.is_set():
                 try:
-                    frame_queue.put((path, im, im0s, s, current_speed, safe_distance, t_capture), timeout=0.2)
+                    frame_queue.put((path, im, im0s, s, current_speed, safe_distance, time.time()), timeout=0.05)
                     break
                 except Exception:
                     continue
