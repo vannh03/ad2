@@ -21,6 +21,17 @@ from pathlib import Path
 from threading import Lock
 from types import SimpleNamespace
 from urllib.parse import unquote
+import subprocess
+_orig_subprocess_run = subprocess.run
+def _patched_subprocess_run(*args, **kwargs):
+    if 'capture_output' in kwargs:
+        if kwargs.pop('capture_output'):
+            kwargs['stdout'] = subprocess.PIPE
+            kwargs['stderr'] = subprocess.PIPE
+    if 'text' in kwargs:
+        kwargs['universal_newlines'] = kwargs.pop('text')
+    return _orig_subprocess_run(*args, **kwargs)
+subprocess.run = _patched_subprocess_run
 import cv2
 import numpy as np
 import torch

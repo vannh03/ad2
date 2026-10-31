@@ -79,7 +79,11 @@ def spaces_in_path(path):
                 yield (str(tmp_path) if string else tmp_path)
             finally:
                 if tmp_path.is_dir():
-                    shutil.copytree(tmp_path, path, dirs_exist_ok=True)
+                    try:
+                        shutil.copytree(tmp_path, path, dirs_exist_ok=True)
+                    except TypeError:
+                        from distutils.dir_util import copy_tree
+                        copy_tree(str(tmp_path), str(path))
                 elif tmp_path.is_file():
                     shutil.copy2(tmp_path, path)
     else:

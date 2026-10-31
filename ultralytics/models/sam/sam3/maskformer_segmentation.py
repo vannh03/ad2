@@ -61,8 +61,8 @@ class SegmentationHead(nn.Module):
         """Embeds pixels using the pixel decoder."""
         if self.use_encoder_inputs:
             backbone_visual_feats = [bb_feat.clone() for bb_feat in backbone_feats]
-            encoder_hidden_states = encoder_hidden_states.permute(1, 2, 0)
-            spatial_dim = math.prod(backbone_feats[-1].shape[-2:])
+            spatial_shape = backbone_feats[-1].shape[-2:]
+            spatial_dim = int(np.prod(spatial_shape))
             encoder_visual_embed = encoder_hidden_states[..., :spatial_dim].reshape(-1, *backbone_feats[-1].shape[1:])
             backbone_visual_feats[-1] = encoder_visual_embed
             if self.act_ckpt:

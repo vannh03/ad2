@@ -1,4 +1,9 @@
 import contextlib
+if not hasattr(contextlib, "nullcontext"):
+    @contextlib.contextmanager
+    def _nullcontext(enter_result=None):
+        yield enter_result
+    contextlib.nullcontext = _nullcontext
 import math
 from collections.abc import Callable
 from pathlib import Path

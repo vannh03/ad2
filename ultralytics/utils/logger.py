@@ -278,7 +278,12 @@ class _DriveInfo:
                 mount = Path(partition.mountpoint).resolve()
             except OSError:
                 continue
-            if cwd == mount or cwd.is_relative_to(mount):
+            is_rel = False
+            try:
+                is_rel = (cwd == mount) or (mount in cwd.parents)
+            except Exception:
+                is_rel = str(cwd).startswith(str(mount))
+            if is_rel:
                 matches.append(partition.mountpoint)
         return max(matches, key=len, default=Path.cwd().anchor or '/')
 

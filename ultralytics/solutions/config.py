@@ -1,4 +1,10 @@
-from dataclasses import dataclass, field
+try:
+    from dataclasses import dataclass, field
+except ImportError:
+    def dataclass(cls=None, **kwargs):
+        return cls if cls else lambda c: c
+    def field(**kwargs):
+        return kwargs.get('default', None)
 from typing import Any
 import cv2
 

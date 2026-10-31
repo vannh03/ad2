@@ -34,7 +34,7 @@ print("   - Các core features và tracker import thành công!")
 
 print("\n4. Kiểm tra tham số main.py...")
 import subprocess
-result = subprocess.run([sys.executable, "main.py", "--help"], capture_output=True, text=True)
+result = subprocess.run([sys.executable, "main.py", "--help"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 assert result.returncode == 0, f"Lỗi khi chạy main.py --help: {result.stderr}"
 print("   - main.py --help chạy thành công!")
 
