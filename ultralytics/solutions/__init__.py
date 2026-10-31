@@ -1,5 +1,3 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 from .ai_gym import AIGym
 from .analytics import Analytics
 from .distance_calculation import DistanceCalculation
@@ -17,25 +15,4 @@ from .speed_estimation import SpeedEstimator
 from .streamlit_inference import Inference
 from .trackzone import TrackZone
 from .vision_eye import VisionEye
-
-__all__ = (
-    "AIGym",
-    "Analytics",
-    "DistanceCalculation",
-    "Heatmap",
-    "Inference",
-    "InstanceSegmentation",
-    "ObjectBlurrer",
-    "ObjectCounter",
-    "ObjectCropper",
-    "ParkingManagement",
-    "ParkingPtsSelection",
-    "QueueManager",
-    "RegionCounter",
-    "SearchApp",
-    "SecurityAlarm",
-    "SpeedEstimator",
-    "TrackZone",
-    "VisionEye",
-    "VisualAISearch",
-)
+__all__ = ('AIGym', 'Analytics', 'DistanceCalculation', 'Heatmap', 'Inference', 'InstanceSegmentation', 'ObjectBlurrer', 'ObjectCounter', 'ObjectCropper', 'ParkingManagement', 'ParkingPtsSelection', 'QueueManager', 'RegionCounter', 'SearchApp', 'SecurityAlarm', 'SpeedEstimator', 'TrackZone', 'VisionEye', 'VisualAISearch')

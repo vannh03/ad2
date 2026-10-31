@@ -1,12 +1,6 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from copy import copy, deepcopy
 from pathlib import Path
-
 import torch
-
 from ultralytics.data import YOLOConcatDataset, build_yolo_dataset
 from ultralytics.data.augment import LoadVisualPrompt
 from ultralytics.models.yolo.detect import DetectionTrainer, DetectionValidator
@@ -14,10 +8,8 @@ from ultralytics.models.yolo.segment import SegmentationValidator
 from ultralytics.nn.tasks import YOLOEModel, YOLOESegModel
 from ultralytics.utils import DEFAULT_CFG, LOGGER, RANK
 from ultralytics.utils.torch_utils import unwrap_model
-
 from ..world.train_world import WorldTrainerFromScratch
 from .val import YOLOEDetectValidator, YOLOESegValidator
-
 
 class YOLOETrainer(DetectionTrainer):
     """A trainer class for YOLOE object detection models.
@@ -34,7 +26,7 @@ class YOLOETrainer(DetectionTrainer):
         build_dataset: Build YOLO dataset with multi-modal support for training.
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides: dict | None = None, _callbacks: dict | None = None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize the YOLOE Trainer with specified configurations.
 
         Args:
@@ -44,11 +36,11 @@ class YOLOETrainer(DetectionTrainer):
         """
         if overrides is None:
             overrides = {}
-        assert not overrides.get("compile"), f"Training with 'model={overrides['model']}' requires 'compile=False'"
-        overrides["overlap_mask"] = False
+        assert not overrides.get('compile'), f"Training with 'model={overrides['model']}' requires 'compile=False'"
+        overrides['overlap_mask'] = False
         super().__init__(cfg, overrides, _callbacks)
 
-    def get_model(self, cfg=None, weights=None, verbose: bool = True):
+    def get_model(self, cfg=None, weights=None, verbose=True):
         """Return a task-appropriate YOLOE model initialized with the specified configuration and weights.
 
         Args:
@@ -65,25 +57,17 @@ class YOLOETrainer(DetectionTrainer):
             - The nc parameter here represents the maximum number of different text samples in one image,
               rather than the actual number of classes.
         """
-        # NOTE: This `nc` here is the max number of different text samples in one image, rather than the actual `nc`.
-        # NOTE: Following the official config, nc hard-coded to 80 for now.
-        model = (YOLOESegModel if self.args.task == "segment" else YOLOEModel)(
-            cfg["yaml_file"] if isinstance(cfg, dict) else cfg,
-            ch=self.data["channels"],
-            nc=min(self.data["nc"], 80),
-            verbose=verbose and RANK == -1,
-        )
+        model = (YOLOESegModel if self.args.task == 'segment' else YOLOEModel)(cfg['yaml_file'] if isinstance(cfg, dict) else cfg, ch=self.data['channels'], nc=min(self.data['nc'], 80), verbose=verbose and RANK == -1)
         if weights:
             model.load(weights)
-
         return model
 
     def get_validator(self):
         """Return a task-appropriate YOLOE validator."""
-        validator = YOLOESegValidator if self.args.task == "segment" else YOLOEDetectValidator
+        validator = YOLOESegValidator if self.args.task == 'segment' else YOLOEDetectValidator
         return validator(self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks)
 
-    def build_dataset(self, img_path: str, mode: str = "train", batch: int | None = None):
+    def build_dataset(self, img_path, mode='train', batch=None):
         """Build YOLO Dataset.
 
         Args:
@@ -95,10 +79,7 @@ class YOLOETrainer(DetectionTrainer):
             (Dataset): YOLO dataset configured for training or validation.
         """
         gs = max(int(unwrap_model(self.model).stride.max() if self.model else 0), 32)
-        return build_yolo_dataset(
-            self.args, img_path, batch, self.data, mode=mode, rect=mode == "val", stride=gs, multi_modal=mode == "train"
-        )
-
+        return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, rect=mode == 'val', stride=gs, multi_modal=mode == 'train')
 
 class YOLOEPETrainer(DetectionTrainer):
     """Fine-tune YOLOE model using linear probing approach.
@@ -111,7 +92,7 @@ class YOLOEPETrainer(DetectionTrainer):
         get_validator: Return a task-appropriate validator.
     """
 
-    def get_model(self, cfg=None, weights=None, verbose: bool = True):
+    def get_model(self, cfg=None, weights=None, verbose=True):
         """Return a task-appropriate YOLOE model initialized with specified config and weights.
 
         Args:
@@ -122,44 +103,30 @@ class YOLOEPETrainer(DetectionTrainer):
         Returns:
             (YOLOEModel | YOLOESegModel): Initialized model with frozen layers except for specific projection layers.
         """
-        model = (YOLOESegModel if self.args.task == "segment" else YOLOEModel)(
-            cfg["yaml_file"] if isinstance(cfg, dict) else cfg,
-            ch=self.data["channels"],
-            nc=self.data["nc"],
-            verbose=verbose and RANK == -1,
-        )
-
+        model = (YOLOESegModel if self.args.task == 'segment' else YOLOEModel)(cfg['yaml_file'] if isinstance(cfg, dict) else cfg, ch=self.data['channels'], nc=self.data['nc'], verbose=verbose and RANK == -1)
         del model.model[-1].savpe
-
-        assert weights is not None, "Pretrained weights must be provided for linear probing."
+        assert weights is not None, 'Pretrained weights must be provided for linear probing.'
         if weights:
             model.load(weights)
-
         model.eval()
-        names = list(self.data["names"].values())
-        # NOTE: `get_text_pe` related to text model and YOLOEDetect.reprta,
-        # it'd get correct results as long as loading proper pretrained weights.
+        names = list(self.data['names'].values())
         tpe = model.get_text_pe(names)
         model.set_classes(names, tpe)
-        model.model[-1].fuse(model.pe)  # fuse text embeddings to classify head
+        model.model[-1].fuse(model.pe)
         model.model[-1].cv3[0][2] = deepcopy(model.model[-1].cv3[0][2]).requires_grad_(True)
         model.model[-1].cv3[1][2] = deepcopy(model.model[-1].cv3[1][2]).requires_grad_(True)
         model.model[-1].cv3[2][2] = deepcopy(model.model[-1].cv3[2][2]).requires_grad_(True)
-
-        if getattr(model.model[-1], "one2one_cv3", None) is not None:
+        if getattr(model.model[-1], 'one2one_cv3', None) is not None:
             model.model[-1].one2one_cv3[0][2] = deepcopy(model.model[-1].one2one_cv3[0][2]).requires_grad_(True)
             model.model[-1].one2one_cv3[1][2] = deepcopy(model.model[-1].one2one_cv3[1][2]).requires_grad_(True)
             model.model[-1].one2one_cv3[2][2] = deepcopy(model.model[-1].one2one_cv3[2][2]).requires_grad_(True)
-
         model.train()
-
         return model
 
     def get_validator(self):
         """Return a task-appropriate validator without the text prompts the YOLOE validators require."""
-        validator = SegmentationValidator if self.args.task == "segment" else DetectionValidator
+        validator = SegmentationValidator if self.args.task == 'segment' else DetectionValidator
         return validator(self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks)
-
 
 class YOLOETrainerFromScratch(YOLOETrainer, WorldTrainerFromScratch):
     """Train YOLOE models from scratch with text embedding support.
@@ -172,7 +139,7 @@ class YOLOETrainerFromScratch(YOLOETrainer, WorldTrainerFromScratch):
         generate_text_embeddings: Generate and cache text embeddings for training.
     """
 
-    def build_dataset(self, img_path: list[str] | str, mode: str = "train", batch: int | None = None):
+    def build_dataset(self, img_path, mode='train', batch=None):
         """Build YOLO Dataset for training or validation.
 
         This method constructs appropriate datasets based on the mode and input paths, handling both standard YOLO
@@ -188,7 +155,7 @@ class YOLOETrainerFromScratch(YOLOETrainer, WorldTrainerFromScratch):
         """
         return WorldTrainerFromScratch.build_dataset(self, img_path, mode, batch)
 
-    def generate_text_embeddings(self, texts: list[str], batch: int, cache_dir: Path):
+    def generate_text_embeddings(self, texts, batch, cache_dir):
         """Generate text embeddings for a list of text samples.
 
         Args:
@@ -212,7 +179,6 @@ class YOLOETrainerFromScratch(YOLOETrainer, WorldTrainerFromScratch):
         torch.save(txt_map, cache_path)
         return txt_map
 
-
 class YOLOEPEFreeTrainer(YOLOEPETrainer, YOLOETrainerFromScratch):
     """Train prompt-free YOLOE model.
 
@@ -228,14 +194,13 @@ class YOLOEPEFreeTrainer(YOLOEPETrainer, YOLOETrainerFromScratch):
         """Preprocess a batch of images for YOLOE training, adjusting formatting and dimensions as needed."""
         return DetectionTrainer.preprocess_batch(self, batch)
 
-    def set_text_embeddings(self, datasets, batch: int):
+    def set_text_embeddings(self, datasets, batch):
         """No-op override for prompt-free training that does not require text embeddings.
 
         Args:
             datasets (list[Dataset]): List of datasets containing category names to process.
             batch (int): Batch size for processing text embeddings.
         """
-
 
 class YOLOEVPTrainer(YOLOETrainerFromScratch):
     """Train YOLOE model with visual prompts.
@@ -247,7 +212,7 @@ class YOLOEVPTrainer(YOLOETrainerFromScratch):
         build_dataset: Build dataset with visual prompt loading transforms.
     """
 
-    def build_dataset(self, img_path: list[str] | str, mode: str = "train", batch: int | None = None):
+    def build_dataset(self, img_path, mode='train', batch=None):
         """Build YOLO Dataset for training or validation with visual prompts.
 
         Args:

@@ -1,15 +1,9 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from copy import copy
 from pathlib import Path
 from typing import Any
-
 from ultralytics.models import yolo
 from ultralytics.nn.tasks import PoseModel
 from ultralytics.utils import DEFAULT_CFG, RANK
-
 
 class PoseTrainer(yolo.detect.DetectionTrainer):
     """A class extending the DetectionTrainer class for training YOLO pose estimation models.
@@ -37,7 +31,7 @@ class PoseTrainer(yolo.detect.DetectionTrainer):
         >>> trainer.train()
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides: dict[str, Any] | None = None, _callbacks: dict | None = None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize a PoseTrainer object for training YOLO pose estimation models.
 
         Args:
@@ -51,15 +45,10 @@ class PoseTrainer(yolo.detect.DetectionTrainer):
         """
         if overrides is None:
             overrides = {}
-        overrides["task"] = "pose"
+        overrides['task'] = 'pose'
         super().__init__(cfg, overrides, _callbacks)
 
-    def get_model(
-        self,
-        cfg: str | Path | dict[str, Any] | None = None,
-        weights: str | Path | None = None,
-        verbose: bool = True,
-    ) -> PoseModel:
+    def get_model(self, cfg=None, weights=None, verbose=True):
         """Get pose estimation model with specified configuration and weights.
 
         Args:
@@ -70,26 +59,17 @@ class PoseTrainer(yolo.detect.DetectionTrainer):
         Returns:
             (PoseModel): Initialized pose estimation model.
         """
-        model = self.set_model_names_for_load(
-            PoseModel(
-                cfg,
-                nc=self.data["nc"],
-                ch=self.data["channels"],
-                data_kpt_shape=self.data["kpt_shape"],
-                verbose=verbose and RANK == -1,
-            )
-        )
+        model = self.set_model_names_for_load(PoseModel(cfg, nc=self.data['nc'], ch=self.data['channels'], data_kpt_shape=self.data['kpt_shape'], verbose=verbose and RANK == -1))
         if weights:
             model.load(weights)
-
         return model
 
     def set_model_attributes(self):
         """Set keypoints shape attribute of PoseModel."""
         super().set_model_attributes()
-        self.model.kpt_shape = self.data["kpt_shape"]
-        self.model.kpt_oks_sigmas = self.data.get("kpt_oks_sigmas")
-        kpt_names = self.data.get("kpt_names")
+        self.model.kpt_shape = self.data['kpt_shape']
+        self.model.kpt_oks_sigmas = self.data.get('kpt_oks_sigmas')
+        kpt_names = self.data.get('kpt_names')
         if not kpt_names:
             names = list(map(str, range(self.model.kpt_shape[0])))
             kpt_names = {i: names for i in range(self.model.nc)}
@@ -97,11 +77,9 @@ class PoseTrainer(yolo.detect.DetectionTrainer):
 
     def get_validator(self):
         """Return an instance of the PoseValidator class for validation."""
-        return yolo.pose.PoseValidator(
-            self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
-        )
+        return yolo.pose.PoseValidator(self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks)
 
-    def get_dataset(self) -> dict[str, Any]:
+    def get_dataset(self):
         """Retrieve the dataset and ensure it contains the required `kpt_shape` key.
 
         Returns:
@@ -111,6 +89,6 @@ class PoseTrainer(yolo.detect.DetectionTrainer):
             KeyError: If the `kpt_shape` key is not present in the dataset.
         """
         data = super().get_dataset()
-        if "kpt_shape" not in data:
-            raise KeyError(f"No `kpt_shape` in the {self.args.data}. See https://docs.ultralytics.com/datasets/pose")
+        if 'kpt_shape' not in data:
+            raise KeyError(f'No `kpt_shape` in the {self.args.data}. See https://docs.ultralytics.com/datasets/pose')
         return data

@@ -1,4 +1,3 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """
 SAM model interface.
 
@@ -13,16 +12,10 @@ Key Features:
     - Zero-shot transfer capabilities
     - Trained on SA-1B dataset
 """
-
-from __future__ import annotations
-
 from pathlib import Path
-
 from ultralytics.engine.model import Model
 from ultralytics.utils.torch_utils import model_info
-
 from .predict import Predictor, SAM2Predictor, SAM3Predictor
-
 
 class SAM(Model):
     """SAM (Segment Anything Model) interface class for real-time image segmentation tasks.
@@ -47,7 +40,7 @@ class SAM(Model):
         ...     print(f"Detected {len(r.masks)} masks")
     """
 
-    def __init__(self, model: str = "sam_b.pt") -> None:
+    def __init__(self, model='sam_b.pt'):
         """Initialize the SAM (Segment Anything Model) instance.
 
         Args:
@@ -56,13 +49,13 @@ class SAM(Model):
         Raises:
             NotImplementedError: If the model file extension is not .pt or .pth.
         """
-        if model and Path(model).suffix not in {".pt", ".pth"}:
-            raise NotImplementedError("SAM prediction requires pre-trained *.pt or *.pth model.")
-        self.is_sam2 = "sam2" in Path(model).stem
-        self.is_sam3 = "sam3" in Path(model).stem
-        super().__init__(model=model, task="segment")
+        if model and Path(model).suffix not in {'.pt', '.pth'}:
+            raise NotImplementedError('SAM prediction requires pre-trained *.pt or *.pth model.')
+        self.is_sam2 = 'sam2' in Path(model).stem
+        self.is_sam3 = 'sam3' in Path(model).stem
+        super().__init__(model=model, task='segment')
 
-    def _load(self, weights: str, task=None):
+    def _load(self, weights, task=None):
         """Load the specified weights into the SAM model.
 
         Args:
@@ -75,14 +68,12 @@ class SAM(Model):
         """
         if self.is_sam3:
             from .build_sam3 import build_interactive_sam3
-
             self.model = build_interactive_sam3(weights)
         else:
-            from .build import build_sam  # slow import
-
+            from .build import build_sam
             self.model = build_sam(weights)
 
-    def predict(self, source, stream: bool = False, bboxes=None, points=None, labels=None, **kwargs):
+    def predict(self, source, stream=False, bboxes=None, points=None, labels=None, **kwargs):
         """Perform segmentation prediction on the given image or video source.
 
         Args:
@@ -103,12 +94,12 @@ class SAM(Model):
             >>> for r in results:
             ...     print(f"Detected {len(r.masks)} masks")
         """
-        overrides = {"conf": 0.25, "task": "segment", "mode": "predict", "imgsz": 1024}
-        kwargs = {**overrides, **kwargs, "retina_masks": True}
-        prompts = {"bboxes": bboxes, "points": points, "labels": labels}
+        overrides = {'conf': 0.25, 'task': 'segment', 'mode': 'predict', 'imgsz': 1024}
+        kwargs = {**overrides, **kwargs, 'retina_masks': True}
+        prompts = {'bboxes': bboxes, 'points': points, 'labels': labels}
         return super().predict(source, stream, prompts=prompts, **kwargs)
 
-    def __call__(self, source=None, stream: bool = False, bboxes=None, points=None, labels=None, **kwargs):
+    def __call__(self, source=None, stream=False, bboxes=None, points=None, labels=None, **kwargs):
         """Perform segmentation prediction on the given image or video source.
 
         This method is an alias for the 'predict' method, providing a convenient way to call the SAM model for
@@ -133,7 +124,7 @@ class SAM(Model):
         """
         return self.predict(source, stream, bboxes, points, labels, **kwargs)
 
-    def info(self, detailed: bool = False, verbose: bool = True):
+    def info(self, detailed=False, verbose=True):
         """Log information about the SAM model.
 
         Args:
@@ -151,7 +142,7 @@ class SAM(Model):
         return model_info(self.model, detailed=detailed, verbose=verbose)
 
     @property
-    def task_map(self) -> dict[str, dict[str, type[Predictor]]]:
+    def task_map(self):
         """Provide a mapping from the 'segment' task to its corresponding 'Predictor'.
 
         Returns:
@@ -164,6 +155,4 @@ class SAM(Model):
             >>> print(task_map)
             {'segment': {'predictor': <class 'ultralytics.models.sam.predict.Predictor'>}}
         """
-        return {
-            "segment": {"predictor": SAM2Predictor if self.is_sam2 else SAM3Predictor if self.is_sam3 else Predictor}
-        }
+        return {'segment': {'predictor': SAM2Predictor if self.is_sam2 else SAM3Predictor if self.is_sam3 else Predictor}}

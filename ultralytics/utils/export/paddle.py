@@ -1,21 +1,8 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
-
 import torch
-
 from ultralytics.utils import ARM64, IS_JETSON, LOGGER, YAML
 
-
-def torch2paddle(
-    model: torch.nn.Module,
-    im: torch.Tensor,
-    output_dir: Path | str,
-    metadata: dict | None = None,
-    prefix: str = "",
-) -> str:
+def torch2paddle(model, im, output_dir, metadata=None, prefix=''):
     """Export a PyTorch model to PaddlePaddle format using X2Paddle.
 
     Args:
@@ -28,40 +15,19 @@ def torch2paddle(
     Returns:
         (str): Path to the exported ``_paddle_model`` directory.
     """
-    assert not IS_JETSON, "Jetson Paddle exports not supported yet"
+    assert not IS_JETSON, 'Jetson Paddle exports not supported yet'
     from ultralytics.utils.checks import check_requirements
-
-    check_requirements(
-        (
-            # Interchangeable candidates so an installed variant is never dual-installed over (both ship 'paddle')
-            (
-                "paddlepaddle-gpu>=3.0.0,<3.3.0"  # pin <3.3.0 https://github.com/PaddlePaddle/Paddle/issues/77340
-                if im.device.type == "cuda"
-                else "paddlepaddle==3.0.0"  # pin 3.0.0 for ARM64
-                if ARM64
-                else "paddlepaddle>=3.0.0,<3.3.0",  # pin <3.3.0 https://github.com/PaddlePaddle/Paddle/issues/77340
-                "paddlepaddle==3.0.0" if ARM64 else "paddlepaddle>=3.0.0,<3.3.0",
-                "paddlepaddle-gpu>=3.0.0,<3.3.0",
-            ),
-            "x2paddle",
-        )
-    )
-
+    check_requirements((('paddlepaddle-gpu>=3.0.0,<3.3.0' if im.device.type == 'cuda' else 'paddlepaddle==3.0.0' if ARM64 else 'paddlepaddle>=3.0.0,<3.3.0', 'paddlepaddle==3.0.0' if ARM64 else 'paddlepaddle>=3.0.0,<3.3.0', 'paddlepaddle-gpu>=3.0.0,<3.3.0'), 'x2paddle'))
     import x2paddle
     from x2paddle.convert import pytorch2paddle
     from x2paddle.op_mapper.pytorch2paddle import prim2code
-
-    # x2paddle 1.6.0 codegen for pooling asserts reads exec() results from locals(), which PEP 667 broke in Python
-    # 3.13. The assert only re-checks pooling args that torch already validated during tracing, so skip emitting it.
     prim_assert = prim2code.prim_assert
     prim2code.prim_assert = lambda layer, **kwargs: None
-
-    LOGGER.info(f"\n{prefix} starting export with X2Paddle {x2paddle.__version__}...")
-
+    LOGGER.info(f'\n{prefix} starting export with X2Paddle {x2paddle.__version__}...')
     try:
-        pytorch2paddle(module=model, save_dir=output_dir, jit_type="trace", input_examples=[im])  # export
+        pytorch2paddle(module=model, save_dir=output_dir, jit_type='trace', input_examples=[im])
     finally:
         prim2code.prim_assert = prim_assert
     if metadata:
-        YAML.save(Path(output_dir) / "metadata.yaml", metadata)  # add metadata.yaml
+        YAML.save(Path(output_dir) / 'metadata.yaml', metadata)
     return str(output_dir)

@@ -1,10 +1,5 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from ultralytics.models.yolo.detect.predict import DetectionPredictor
 from ultralytics.utils import DEFAULT_CFG, ops
-
 
 class PosePredictor(DetectionPredictor):
     """A class extending the DetectionPredictor class for prediction based on a pose model.
@@ -27,7 +22,7 @@ class PosePredictor(DetectionPredictor):
         >>> predictor.predict_cli()
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks: dict | None = None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize PosePredictor for pose estimation tasks.
 
         Sets up a PosePredictor instance, configuring it for pose detection tasks and handling device-specific warnings
@@ -39,7 +34,7 @@ class PosePredictor(DetectionPredictor):
             _callbacks (dict, optional): Dictionary of callback functions to be invoked during prediction.
         """
         super().__init__(cfg, overrides, _callbacks)
-        self.args.task = "pose"
+        self.args.task = 'pose'
 
     def construct_result(self, pred, img, orig_img, img_path):
         """Construct the result object from the prediction, including keypoints.
@@ -59,9 +54,7 @@ class PosePredictor(DetectionPredictor):
                 keypoints.
         """
         result = super().construct_result(pred, img, orig_img, img_path)
-        # Extract keypoints from prediction and reshape according to model's keypoint shape
         pred_kpts = pred[:, 6:].view(pred.shape[0], *self.model.kpt_shape)
-        # Scale keypoints coordinates to match the original image dimensions
         pred_kpts = ops.scale_coords(img.shape[2:], pred_kpts, orig_img.shape)
         result.update(keypoints=pred_kpts)
         return result

@@ -1,17 +1,10 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from typing import Any
-
 import numpy as np
-
 from ..utils.ops import xyxy2ltwh
 from .basetrack import TrackState
 from .byte_tracker import BYTETracker, STrack
 from .utils import matching
 from .utils.stracks import parse_bboxes
-
 
 class OCSortTrack(STrack):
     """Track object for OC-SORT with observation-centric state management.
@@ -26,7 +19,7 @@ class OCSortTrack(STrack):
         delta_t (int): Temporal window for velocity computation.
     """
 
-    def __init__(self, xywh: np.ndarray, score: float, cls: Any, delta_t: int = 3):
+    def __init__(self, xywh, score, cls, delta_t=3):
         """Initialize an OCSortTrack with observation storage.
 
         Args:
@@ -37,13 +30,13 @@ class OCSortTrack(STrack):
         """
         super().__init__(xywh, score, cls)
         self.last_observation = np.array([-1, -1, -1, -1], dtype=np.float32)
-        self.observations: dict[int, np.ndarray] = {}
-        self.velocity: np.ndarray | None = None
+        self.observations = {}
+        self.velocity = None
         self.delta_t = delta_t
-        self._saved_mean: np.ndarray | None = None
-        self._saved_covariance: np.ndarray | None = None
+        self._saved_mean = None
+        self._saved_covariance = None
 
-    def activate(self, kalman_filter, frame_id: int) -> None:
+    def activate(self, kalman_filter, frame_id):
         """Activate a new tracklet and seed its observation history.
 
         Args:
@@ -51,11 +44,11 @@ class OCSortTrack(STrack):
             frame_id (int): Frame id at which the track is created.
         """
         super().activate(kalman_filter, frame_id)
-        self._record_observation(self.xyxy.astype(np.float32), frame_id)  # detection-space precision
+        self._record_observation(self.xyxy.astype(np.float32), frame_id)
         self._saved_mean = self.mean.copy()
         self._saved_covariance = self.covariance.copy()
 
-    def update(self, new_track: STrack, frame_id: int) -> None:
+    def update(self, new_track, frame_id):
         """Update the track with a matched detection and record the observation.
 
         Args:
@@ -68,7 +61,7 @@ class OCSortTrack(STrack):
         self._saved_covariance = self.covariance.copy()
         self.velocity = self._compute_velocity()
 
-    def re_activate(self, new_track: STrack, frame_id: int, new_id: bool = False) -> None:
+    def re_activate(self, new_track, frame_id, new_id=False):
         """Re-activate a previously lost track with a new detection.
 
         Args:
@@ -83,11 +76,11 @@ class OCSortTrack(STrack):
         self.velocity = self._compute_velocity()
 
     @staticmethod
-    def _xyxy_center(xyxy: np.ndarray) -> np.ndarray:
+    def _xyxy_center(xyxy):
         """Return `(cx, cy)` center of an xyxy bounding box."""
         return np.array([(xyxy[0] + xyxy[2]) / 2, (xyxy[1] + xyxy[3]) / 2])
 
-    def _record_observation(self, obs: np.ndarray, frame_id: int) -> None:
+    def _record_observation(self, obs, frame_id):
         """Store `obs` for `frame_id`, dropping history beyond `delta_t + 2` to bound memory.
 
         The retained window always covers the frame `_compute_velocity` reaches back to, since at most `delta_t`
@@ -100,7 +93,7 @@ class OCSortTrack(STrack):
             for frame in sorted(self.observations)[:-max_keep]:
                 del self.observations[frame]
 
-    def _compute_velocity(self) -> np.ndarray | None:
+    def _compute_velocity(self):
         """Compute the observation-centric velocity direction from stored observations.
 
         Returns:
@@ -109,58 +102,42 @@ class OCSortTrack(STrack):
         """
         if len(self.observations) < 2:
             return None
-
         current_frame = max(self.observations.keys())
         current_center = self._xyxy_center(self.observations[current_frame])
-
-        # Find the most recent observation at least delta_t frames before current
         prev_obs = None
         for frame in sorted(self.observations.keys(), reverse=True):
             if frame < current_frame - self.delta_t + 1:
                 prev_obs = self.observations[frame]
                 break
-
-        # Fallback: use the earliest observation if nothing is delta_t frames back
         if prev_obs is None:
             earliest_frame = min(self.observations.keys())
             if earliest_frame == current_frame:
                 return None
             prev_obs = self.observations[earliest_frame]
-
         direction = current_center - self._xyxy_center(prev_obs)
         norm = np.linalg.norm(direction)
-        if norm < 1e-6:
+        if norm < 1e-06:
             return np.zeros(2, dtype=np.float32)
         return (direction / norm).astype(np.float32)
 
-    def apply_oru(self, new_observation_xyxy: np.ndarray, current_frame_id: int) -> None:
+    def apply_oru(self, new_observation_xyxy, current_frame_id):
         """Repair Kalman state across an occlusion gap by replaying predict-updates on virtual observations."""
         if self._saved_mean is None or not self.observations:
             return
-
         last_frame = max(self.observations.keys())
         gap = current_frame_id - last_frame
         if gap <= 1:
             return
-
-        # Restore Kalman state to last observation point
         self.mean = self._saved_mean.copy()
         self.covariance = self._saved_covariance.copy()
-
         last_obs = self.observations[last_frame]
-
-        # Replay with virtual observations
         for t in range(1, gap):
             alpha = t / gap
             virtual_xyxy = (1 - alpha) * last_obs + alpha * new_observation_xyxy
-            # Convert xyxy to tlwh then to xyah for Kalman measurement
             virtual_xyah = self.tlwh_to_xyah(xyxy2ltwh(virtual_xyxy))
-            self.mean, self.covariance = self.kalman_filter.predict(self.mean, self.covariance)
-            self.mean, self.covariance = self.kalman_filter.update(self.mean, self.covariance, virtual_xyah)
-
-        # Final predict to reach current frame
-        self.mean, self.covariance = self.kalman_filter.predict(self.mean, self.covariance)
-
+            (self.mean, self.covariance) = self.kalman_filter.predict(self.mean, self.covariance)
+            (self.mean, self.covariance) = self.kalman_filter.update(self.mean, self.covariance, virtual_xyah)
+        (self.mean, self.covariance) = self.kalman_filter.predict(self.mean, self.covariance)
 
 class OCSORT(BYTETracker):
     """OC-SORT multi-object tracker with observation-centric association.
@@ -175,10 +152,9 @@ class OCSORT(BYTETracker):
         inertia (float): Weight of velocity consistency cost in association.
         use_byte (bool): Whether to use ByteTrack-style low-confidence second pass.
     """
-
     track_class = OCSortTrack
 
-    def __init__(self, args: Any):
+    def __init__(self, args):
         """Initialize OC-SORT tracker.
 
         Args:
@@ -186,54 +162,42 @@ class OCSORT(BYTETracker):
                 `inertia`, and `use_byte`.
         """
         super().__init__(args)
-        self.delta_t = getattr(args, "delta_t", 3)
-        self.inertia = getattr(args, "inertia", 0.2)
-        self.use_byte = getattr(args, "use_byte", False)
+        self.delta_t = getattr(args, 'delta_t', 3)
+        self.inertia = getattr(args, 'inertia', 0.2)
+        self.use_byte = getattr(args, 'use_byte', False)
 
-    def init_track(self, results, img: np.ndarray | None = None) -> list[OCSortTrack]:
+    def init_track(self, results, img=None):
         """Build `OCSortTrack` instances from a `Results`-like object."""
         if len(results) == 0:
             return []
         bboxes = parse_bboxes(results)
         return [OCSortTrack(xywh, s, c, self.delta_t) for (xywh, s, c) in zip(bboxes, results.conf, results.cls)]
 
-    def _fuse_appearance(
-        self,
-        dists: np.ndarray,
-        tracks: list[OCSortTrack],
-        detections: list[OCSortTrack],
-        iou_dists: np.ndarray | None = None,
-    ) -> np.ndarray:
+    def _fuse_appearance(self, dists, tracks, detections, iou_dists=None):
         """Hook combining motion cost with appearance cost. Default: pass-through (no ReID)."""
         return dists
 
-    def get_dists(self, tracks: list[OCSortTrack], detections: list[OCSortTrack]) -> np.ndarray:
+    def get_dists(self, tracks, detections):
         """Cost matrix = IoU (+score-fuse) + inertia·OCM (+ optional appearance, via hook)."""
         iou_dists = matching.iou_distance(tracks, detections)
         dists = matching.fuse_score(iou_dists, detections) if self.args.fuse_score else iou_dists.copy()
         dists = dists + self.inertia * self._velocity_direction_cost(tracks, detections)
         return self._fuse_appearance(dists, tracks, detections, iou_dists=iou_dists)
 
-    def _ocr_associate(
-        self,
-        tracks: list[OCSortTrack],
-        dets: list[OCSortTrack],
-        activated: list[OCSortTrack],
-        refind: list[OCSortTrack],
-    ) -> tuple[list[int], list[int]]:
+    def _ocr_associate(self, tracks, dets, activated, refind):
         """Run one OCR (last-observation IoU) pass, applying matches in place.
 
         Returns:
             (tuple[list[int], list[int]]): Local indices of unmatched ``tracks`` and unmatched ``dets``.
         """
         if not tracks or not dets:
-            return list(range(len(tracks))), list(range(len(dets)))
+            return (list(range(len(tracks))), list(range(len(dets))))
         iou_dists = self._ocr_distance(tracks, dets)
         ocr_dists = matching.fuse_score(iou_dists, dets) if self.args.fuse_score else iou_dists
         ocr_dists = self._fuse_appearance(ocr_dists, tracks, dets, iou_dists=iou_dists)
-        matches, u_track, u_det = matching.linear_assignment(ocr_dists, thresh=self.args.match_thresh)
-        for itracked, idet in matches:
-            track, det = tracks[itracked], dets[idet]
+        (matches, u_track, u_det) = matching.linear_assignment(ocr_dists, thresh=self.args.match_thresh)
+        for (itracked, idet) in matches:
+            (track, det) = (tracks[itracked], dets[idet])
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 activated.append(track)
@@ -241,17 +205,9 @@ class OCSORT(BYTETracker):
                 track.apply_oru(det.xyxy, self.frame_id)
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind.append(track)
-        return list(u_track), list(u_det)
+        return (list(u_track), list(u_det))
 
-    def _post_first_association(
-        self,
-        strack_pool: list[OCSortTrack],
-        detections: list[OCSortTrack],
-        u_track: list[int],
-        u_detection: list[int],
-        activated: list[OCSortTrack],
-        refind: list[OCSortTrack],
-    ) -> tuple[list[int], list[int]]:
+    def _post_first_association(self, strack_pool, detections, u_track, u_detection, activated, refind):
         """Observation-Centric Recovery (OCR) pass after first-stage association.
 
         Runs OCR for still-Tracked unmatched tracks first to preserve active-track matching priority, then for
@@ -259,28 +215,17 @@ class OCSORT(BYTETracker):
         """
         ocr_dets = [detections[i] for i in u_detection]
         if not ocr_dets:
-            return u_track, u_detection
-
+            return (u_track, u_detection)
         tracked = [i for i in u_track if strack_pool[i].state == TrackState.Tracked]
         other = [i for i in u_track if strack_pool[i].state != TrackState.Tracked]
-
-        u_t1, u_d1 = self._ocr_associate([strack_pool[i] for i in tracked], ocr_dets, activated, refind)
+        (u_t1, u_d1) = self._ocr_associate([strack_pool[i] for i in tracked], ocr_dets, activated, refind)
         remaining = [ocr_dets[j] for j in u_d1]
-        u_t2, u_d2 = self._ocr_associate([strack_pool[i] for i in other], remaining, activated, refind)
-
+        (u_t2, u_d2) = self._ocr_associate([strack_pool[i] for i in other], remaining, activated, refind)
         u_track = [tracked[i] for i in u_t1] + [other[i] for i in u_t2]
         u_detection = [u_detection[u_d1[j]] for j in u_d2]
-        return u_track, u_detection
+        return (u_track, u_detection)
 
-    def _second_association(
-        self,
-        strack_pool: list[OCSortTrack],
-        u_track: list[int],
-        detections_second: list[OCSortTrack],
-        activated: list[OCSortTrack],
-        refind: list[OCSortTrack],
-        lost: list[OCSortTrack],
-    ) -> None:
+    def _second_association(self, strack_pool, u_track, detections_second, activated, refind, lost):
         """Run ByteTrack-style second pass only when ``use_byte`` is enabled."""
         if not self.use_byte:
             for i in u_track:
@@ -291,7 +236,7 @@ class OCSORT(BYTETracker):
             return
         super()._second_association(strack_pool, u_track, detections_second, activated, refind, lost)
 
-    def _velocity_direction_cost(self, tracks: list[OCSortTrack], detections: list[OCSortTrack]) -> np.ndarray:
+    def _velocity_direction_cost(self, tracks, detections):
         """Compute OCM velocity direction consistency cost matrix (vectorized).
 
         For each track-detection pair, measures the angular difference between
@@ -307,26 +252,22 @@ class OCSORT(BYTETracker):
         cost = np.zeros((len(tracks), len(detections)), dtype=np.float32)
         if cost.size == 0:
             return cost
-
-        # Pre-extract detection centers as (M, 2) array
         det_centers = np.array([OCSortTrack._xyxy_center(det.xyxy) for det in detections], dtype=np.float32)
-
-        for i, track in enumerate(tracks):
+        for (i, track) in enumerate(tracks):
             if track.velocity is None or track.last_observation[0] < 0:
                 continue
             track_center = OCSortTrack._xyxy_center(track.last_observation)
-            directions = det_centers - track_center  # (M, 2)
-            norms = np.linalg.norm(directions, axis=1)  # (M,)
-            valid = norms > 1e-6
+            directions = det_centers - track_center
+            norms = np.linalg.norm(directions, axis=1)
+            valid = norms > 1e-06
             if not valid.any():
                 continue
             directions[valid] /= norms[valid, None]
             dots = np.clip(directions[valid] @ track.velocity, -1.0, 1.0)
             cost[i, valid] = np.arccos(dots) / np.pi
-
         return cost
 
-    def _ocr_distance(self, tracks: list[OCSortTrack], detections: list[OCSortTrack]) -> np.ndarray:
+    def _ocr_distance(self, tracks, detections):
         """Compute IoU distance using tracks' last observation positions instead of Kalman predictions.
 
         Args:

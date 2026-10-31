@@ -1,9 +1,6 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """Activation modules."""
-
 import torch
 from torch import nn
-
 
 class AGLU(nn.Module):
     """Unified activation function module from AGLU.
@@ -31,14 +28,14 @@ class AGLU(nn.Module):
         https://github.com/kostas1515/AGLU
     """
 
-    def __init__(self, device=None, dtype=None) -> None:
+    def __init__(self, device=None, dtype=None):
         """Initialize the Unified activation function with learnable parameters."""
         super().__init__()
         self.act = nn.Softplus(beta=-1.0)
-        self.lambd = nn.Parameter(nn.init.uniform_(torch.empty(1, device=device, dtype=dtype)))  # lambda parameter
-        self.kappa = nn.Parameter(nn.init.uniform_(torch.empty(1, device=device, dtype=dtype)))  # kappa parameter
+        self.lambd = nn.Parameter(nn.init.uniform_(torch.empty(1, device=device, dtype=dtype)))
+        self.kappa = nn.Parameter(nn.init.uniform_(torch.empty(1, device=device, dtype=dtype)))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         """Apply the Adaptive Gated Linear Unit (AGLU) activation function.
 
         This forward method implements the AGLU activation function with learnable parameters lambda and kappa. The
@@ -50,5 +47,5 @@ class AGLU(nn.Module):
         Returns:
             (torch.Tensor): Output tensor after applying the AGLU activation function, with the same shape as the input.
         """
-        lam = torch.clamp(self.lambd, min=0.0001)  # Clamp lambda to avoid division by zero
-        return torch.exp((1 / lam) * self.act((self.kappa * x) - torch.log(lam)))
+        lam = torch.clamp(self.lambd, min=0.0001)
+        return torch.exp(1 / lam * self.act(self.kappa * x - torch.log(lam)))

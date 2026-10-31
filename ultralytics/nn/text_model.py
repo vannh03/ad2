@@ -1,23 +1,15 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from abc import abstractmethod
 from pathlib import Path
-
 import torch
 from PIL import Image
 from torch import nn
-
 from ultralytics.utils import WEIGHTS_DIR, checks
 from ultralytics.utils.torch_utils import smart_inference_mode
-
 try:
     import clip
 except ImportError:
-    checks.check_requirements("git+https://github.com/ultralytics/CLIP.git")
+    checks.check_requirements('git+https://github.com/ultralytics/CLIP.git')
     import clip
-
 
 class TextModel(nn.Module):
     """Abstract base class for text encoding models.
@@ -41,7 +33,6 @@ class TextModel(nn.Module):
     @abstractmethod
     def encode_text(self, texts, dtype):
         """Encode tokenized texts into normalized feature vectors."""
-
 
 class CLIP(TextModel):
     """Implements OpenAI's CLIP (Contrastive Language-Image Pre-training) text encoder.
@@ -67,7 +58,7 @@ class CLIP(TextModel):
         >>> print(text_features.shape)
     """
 
-    def __init__(self, size: str, device: torch.device) -> None:
+    def __init__(self, size, device):
         """Initialize the CLIP text encoder.
 
         This class implements the TextModel interface using OpenAI's CLIP model for text encoding. It loads a
@@ -78,12 +69,12 @@ class CLIP(TextModel):
             device (torch.device): Device to load the model on.
         """
         super().__init__()
-        self.model, self.image_preprocess = clip.load(size, device=device, download_root=str(WEIGHTS_DIR / "clip"))
+        (self.model, self.image_preprocess) = clip.load(size, device=device, download_root=str(WEIGHTS_DIR / 'clip'))
         self.to(device)
         self.device = device
         self.eval()
 
-    def tokenize(self, texts: str | list[str], truncate: bool = True) -> torch.Tensor:
+    def tokenize(self, texts, truncate=True):
         """Convert input texts to CLIP tokens.
 
         Args:
@@ -104,7 +95,7 @@ class CLIP(TextModel):
         return clip.tokenize(texts, truncate=truncate).to(self.device)
 
     @smart_inference_mode()
-    def encode_text(self, texts: torch.Tensor, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+    def encode_text(self, texts, dtype=torch.float32):
         """Encode tokenized texts into normalized feature vectors.
 
         This method processes tokenized text inputs through the CLIP model to generate feature vectors, which are then
@@ -129,7 +120,7 @@ class CLIP(TextModel):
         return txt_feats
 
     @smart_inference_mode()
-    def encode_image(self, image: Image.Image | torch.Tensor, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+    def encode_image(self, image, dtype=torch.float32):
         """Encode images into normalized feature vectors.
 
         This method processes image inputs through the CLIP model to generate feature vectors, which are then
@@ -159,7 +150,6 @@ class CLIP(TextModel):
         img_feats = img_feats / img_feats.norm(p=2, dim=-1, keepdim=True)
         return img_feats
 
-
 class MobileCLIP(TextModel):
     """Implement Apple's MobileCLIP text encoder for efficient text encoding.
 
@@ -182,10 +172,9 @@ class MobileCLIP(TextModel):
         >>> tokens = text_encoder.tokenize(["a photo of a cat", "a photo of a dog"])
         >>> features = text_encoder.encode_text(tokens)
     """
+    config_size_map = {'s0': 's0', 's1': 's1', 's2': 's2', 'b': 'b', 'blt': 'b'}
 
-    config_size_map = {"s0": "s0", "s1": "s1", "s2": "s2", "b": "b", "blt": "b"}
-
-    def __init__(self, size: str, device: torch.device) -> None:
+    def __init__(self, size, device):
         """Initialize the MobileCLIP text encoder.
 
         This class implements the TextModel interface using Apple's MobileCLIP model for efficient text encoding.
@@ -197,24 +186,21 @@ class MobileCLIP(TextModel):
         try:
             import mobileclip
         except ImportError:
-            # Ultralytics fork preferred since Apple MobileCLIP repo has incorrect version of torchvision
-            checks.check_requirements("git+https://github.com/ultralytics/mobileclip.git")
+            checks.check_requirements('git+https://github.com/ultralytics/mobileclip.git')
             import mobileclip
-
         super().__init__()
         config = self.config_size_map[size]
-        file = f"mobileclip_{size}.pt"
+        file = f'mobileclip_{size}.pt'
         if not Path(file).is_file():
             from ultralytics import download
-
-            download(f"https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/{file}")
-        self.model = mobileclip.create_model_and_transforms(f"mobileclip_{config}", pretrained=file, device=device)[0]
-        self.tokenizer = mobileclip.get_tokenizer(f"mobileclip_{config}")
+            download(f'https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/{file}')
+        self.model = mobileclip.create_model_and_transforms(f'mobileclip_{config}', pretrained=file, device=device)[0]
+        self.tokenizer = mobileclip.get_tokenizer(f'mobileclip_{config}')
         self.to(device)
         self.device = device
         self.eval()
 
-    def tokenize(self, texts: list[str]) -> torch.Tensor:
+    def tokenize(self, texts):
         """Convert input texts to MobileCLIP tokens.
 
         Args:
@@ -230,7 +216,7 @@ class MobileCLIP(TextModel):
         return self.tokenizer(texts).to(self.device)
 
     @smart_inference_mode()
-    def encode_text(self, texts: torch.Tensor, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+    def encode_text(self, texts, dtype=torch.float32):
         """Encode tokenized texts into normalized feature vectors.
 
         Args:
@@ -250,7 +236,6 @@ class MobileCLIP(TextModel):
         text_features = self.model.encode_text(texts).to(dtype)
         text_features /= text_features.norm(p=2, dim=-1, keepdim=True)
         return text_features
-
 
 class MobileCLIPTS(TextModel):
     """Load a TorchScript traced version of MobileCLIP.
@@ -274,7 +259,7 @@ class MobileCLIPTS(TextModel):
         >>> features = text_encoder.encode_text(tokens)
     """
 
-    def __init__(self, device: torch.device, weight: str = "mobileclip_blt.ts"):
+    def __init__(self, device, weight='mobileclip_blt.ts'):
         """Initialize the MobileCLIP TorchScript text encoder.
 
         This class implements the TextModel interface using Apple's MobileCLIP model in TorchScript format for efficient
@@ -286,12 +271,11 @@ class MobileCLIPTS(TextModel):
         """
         super().__init__()
         from ultralytics.utils.downloads import attempt_download_asset
-
         self.encoder = torch.jit.load(attempt_download_asset(weight), map_location=device)
         self.tokenizer = clip.clip.tokenize
         self.device = device
 
-    def tokenize(self, texts: list[str], truncate: bool = True) -> torch.Tensor:
+    def tokenize(self, texts, truncate=True):
         """Convert input texts to MobileCLIP tokens.
 
         Args:
@@ -312,7 +296,7 @@ class MobileCLIPTS(TextModel):
         return self.tokenizer(texts, truncate=truncate).to(self.device)
 
     @smart_inference_mode()
-    def encode_text(self, texts: torch.Tensor, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+    def encode_text(self, texts, dtype=torch.float32):
         """Encode tokenized texts into normalized feature vectors.
 
         Args:
@@ -329,11 +313,9 @@ class MobileCLIPTS(TextModel):
             >>> features.shape
             torch.Size([2, 512])  # Actual dimension depends on model size
         """
-        # NOTE: no need to do normalization here as it's embedded in the torchscript model
         return self.encoder(texts).to(dtype)
 
-
-def build_text_model(variant: str, device: torch.device = None) -> TextModel:
+def build_text_model(variant, device=None):
     """Build a text encoding model based on the specified variant.
 
     Args:
@@ -347,12 +329,12 @@ def build_text_model(variant: str, device: torch.device = None) -> TextModel:
         >>> model = build_text_model("clip:ViT-B/32", device=torch.device("cuda"))
         >>> model = build_text_model("mobileclip:s0", device=torch.device("cpu"))
     """
-    base, size = variant.split(":")
-    if base == "clip":
+    (base, size) = variant.split(':')
+    if base == 'clip':
         return CLIP(size, device)
-    elif base == "mobileclip":
+    elif base == 'mobileclip':
         return MobileCLIPTS(device)
-    elif base == "mobileclip2":
-        return MobileCLIPTS(device, weight="mobileclip2_b.ts")
+    elif base == 'mobileclip2':
+        return MobileCLIPTS(device, weight='mobileclip2_b.ts')
     else:
         raise ValueError(f"Unrecognized base model '{base}'. Supported models are 'clip', 'mobileclip', 'mobileclip2'.")

@@ -1,16 +1,9 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from typing import Any
-
 import cv2
 import numpy as np
 import torch
-
 from ultralytics.solutions.object_counter import ObjectCounter
 from ultralytics.solutions.solutions import SolutionAnnotator, SolutionResults
-
 
 class Heatmap(ObjectCounter):
     """A class to draw heatmaps in real-time video streams based on object tracks.
@@ -35,46 +28,35 @@ class Heatmap(ObjectCounter):
         >>> processed_frame = heatmap.process(frame)
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """Initialize the Heatmap class for real-time video stream heatmap generation based on object tracks.
 
         Args:
             **kwargs (Any): Keyword arguments passed to the parent ObjectCounter class.
         """
         super().__init__(**kwargs)
-
-        self.initialized = False  # Flag for heatmap initialization
-        if self.region is not None:  # Check if user provided the region coordinates
+        self.initialized = False
+        if self.region is not None:
             self.initialize_region()
-
-        # Store colormap
-        self.colormap = self.CFG["colormap"]
+        self.colormap = self.CFG['colormap']
         self.heatmap = None
 
-    def heatmap_effect(self, box: torch.Tensor) -> None:
+    def heatmap_effect(self, box):
         """Efficiently calculate heatmap area and effect location for applying colormap.
 
         Args:
             box (torch.Tensor): Bounding box coordinates [x0, y0, x1, y1] or (4, 2) OBB corner points.
         """
-        x0, y0, x1, y1 = map(int, self.get_enclosing_box(box))
-        h, w = self.heatmap.shape[:2]
-        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, w), min(y1, h)  # clip OBB corners to image bounds
+        (x0, y0, x1, y1) = map(int, self.get_enclosing_box(box))
+        (h, w) = self.heatmap.shape[:2]
+        (x0, y0, x1, y1) = (max(x0, 0), max(y0, 0), min(x1, w), min(y1, h))
         radius_squared = (min(x1 - x0, y1 - y0) // 2) ** 2
-
-        # Create a meshgrid with region of interest (ROI) for vectorized distance calculations
-        xv, yv = np.meshgrid(np.arange(x0, x1), np.arange(y0, y1))
-
-        # Calculate squared distances from the center
-        dist_squared = (xv - ((x0 + x1) // 2)) ** 2 + (yv - ((y0 + y1) // 2)) ** 2
-
-        # Create a mask of points within the radius
+        (xv, yv) = np.meshgrid(np.arange(x0, x1), np.arange(y0, y1))
+        dist_squared = (xv - (x0 + x1) // 2) ** 2 + (yv - (y0 + y1) // 2) ** 2
         within_radius = dist_squared <= radius_squared
-
-        # Update only the values within the bounding box in a single vectorized operation
         self.heatmap[y0:y1, x0:x1][within_radius] += 2
 
-    def process(self, im0: np.ndarray) -> SolutionResults:
+    def process(self, im0):
         """Generate heatmap for each frame using Ultralytics tracking.
 
         Args:
@@ -87,44 +69,25 @@ class Heatmap(ObjectCounter):
         """
         if not self.initialized:
             self.heatmap = np.zeros(im0.shape[:2], dtype=np.float32)
-            self.initialized = True  # Initialize heatmap only once
-
-        self.extract_tracks(im0)  # Extract tracks
-        self.annotator = SolutionAnnotator(im0, line_width=self.line_width)  # Initialize annotator
-
+            self.initialized = True
+        self.extract_tracks(im0)
+        self.annotator = SolutionAnnotator(im0, line_width=self.line_width)
         if self.region is not None:
             self.annotator.draw_region(reg_pts=self.region, color=(104, 0, 123), thickness=self.line_width * 2)
-
-        # Iterate over bounding boxes, track ids and classes index
-        for box, track_id, cls in zip(self.boxes, self.track_ids, self.clss):
-            # Apply heatmap effect for the bounding box
+        for (box, track_id, cls) in zip(self.boxes, self.track_ids, self.clss):
             self.heatmap_effect(box)
-
             if self.region is not None:
-                self.store_tracking_history(track_id, box)  # Store track history
-                # Get previous position if available
+                self.store_tracking_history(track_id, box)
                 prev_position = None
                 if len(self.track_history[track_id]) > 1:
                     prev_position = self.track_history[track_id][-2]
-                self.count_objects(self.track_history[track_id][-1], track_id, prev_position, cls)  # object counting
-
+                self.count_objects(self.track_history[track_id][-1], track_id, prev_position, cls)
         plot_im = self.annotator.result()
         if self.region is not None:
-            self.display_counts(plot_im)  # Display the counts on the frame
-
-        # Normalize, apply colormap to heatmap and combine with original image
+            self.display_counts(plot_im)
         if self.heatmap.any():
             normalized_heatmap = cv2.normalize(self.heatmap, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
             colored_heatmap = cv2.applyColorMap(normalized_heatmap, self.colormap)
             plot_im = cv2.addWeighted(plot_im, 0.5, colored_heatmap, 0.5, 0)
-
-        self.display_output(plot_im)  # Display output with base class function
-
-        # Return SolutionResults
-        return SolutionResults(
-            plot_im=plot_im,
-            in_count=self.in_count,
-            out_count=self.out_count,
-            classwise_count=dict(self.classwise_count),
-            total_tracks=len(self.track_ids),
-        )
+        self.display_output(plot_im)
+        return SolutionResults(plot_im=plot_im, in_count=self.in_count, out_count=self.out_count, classwise_count=dict(self.classwise_count), total_tracks=len(self.track_ids))

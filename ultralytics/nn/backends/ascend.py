@@ -1,16 +1,8 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
-
 import numpy as np
 import torch
-
 from ultralytics.utils import LOGGER
-
 from .base import BaseBackend
-
 
 class AscendBackend(BaseBackend):
     """Huawei Ascend NPU inference backend for CANN offline models.
@@ -19,7 +11,7 @@ class AscendBackend(BaseBackend):
     which wraps CANN's pyACL bindings.
     """
 
-    def load_model(self, weight: str | Path) -> None:
+    def load_model(self, weight):
         """Load an Ascend model from a directory containing a .om file.
 
         Args:
@@ -32,29 +24,22 @@ class AscendBackend(BaseBackend):
         try:
             from ais_bench.infer.interface import InferSession
         except ImportError as e:
-            raise ImportError(
-                "Ascend inference requires the CANN runtime and `ais_bench` Python package. "
-                "See https://docs.ultralytics.com/integrations/ascend#runtime-installation for instructions."
-            ) from e
-
-        LOGGER.info(f"Loading {weight} for Huawei Ascend inference...")
-
+            raise ImportError('Ascend inference requires the CANN runtime and `ais_bench` Python package. See https://docs.ultralytics.com/integrations/ascend#runtime-installation for instructions.') from e
+        LOGGER.info(f'Loading {weight} for Huawei Ascend inference...')
         w = Path(weight)
-        found = next(w.rglob("*.om"), None)
+        found = next(w.rglob('*.om'), None)
         if found is None:
-            raise FileNotFoundError(f"No .om file found in: {w}")
-
-        self.model = InferSession(getattr(self.device, "index", None) or 0, str(found))
-
+            raise FileNotFoundError(f'No .om file found in: {w}')
+        self.model = InferSession(getattr(self.device, 'index', None) or 0, str(found))
         self.apply_metadata(self.read_metadata(found))
 
     def __del__(self):
         """Release the Ascend device-side resources held by the inference session."""
-        model = getattr(self, "model", None)
+        model = getattr(self, 'model', None)
         if model:
             model.free_resource()
 
-    def forward(self, im: torch.Tensor) -> np.ndarray | list[np.ndarray]:
+    def forward(self, im):
         """Run inference on the Ascend NPU.
 
         Args:

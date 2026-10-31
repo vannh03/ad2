@@ -1,22 +1,9 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 import json
 from pathlib import Path
-
 import torch
-
 from ultralytics.utils import LOGGER, TORCH_VERSION
 
-
-def torch2torchscript(
-    model: torch.nn.Module,
-    im: torch.Tensor,
-    output_file: Path | str,
-    metadata: dict | None = None,
-    prefix: str = "",
-) -> str:
+def torch2torchscript(model, im, output_file, metadata=None, prefix=''):
     """Export a PyTorch model to TorchScript format.
 
     Args:
@@ -29,10 +16,9 @@ def torch2torchscript(
     Returns:
         (str): Path to the exported ``.torchscript`` file.
     """
-    LOGGER.info(f"\n{prefix} starting export with torch {TORCH_VERSION}...")
-
+    LOGGER.info(f'\n{prefix} starting export with torch {TORCH_VERSION}...')
     output_file = str(output_file)
     ts = torch.jit.trace(model, im, strict=False, check_trace=False)
-    extra_files = {"config.txt": json.dumps(metadata or {})}  # torch._C.ExtraFilesMap()
+    extra_files = {'config.txt': json.dumps(metadata or {})}
     ts.save(output_file, _extra_files=extra_files)
     return output_file

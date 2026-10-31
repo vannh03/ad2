@@ -1,14 +1,7 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from typing import Any
-
 import numpy as np
-
 from ultralytics.solutions.solutions import BaseSolution, SolutionAnnotator, SolutionResults
 from ultralytics.utils.plotting import colors
-
 
 class RegionCounter(BaseSolution):
     """A class for real-time counting of objects within user-defined regions in a video stream.
@@ -37,28 +30,15 @@ class RegionCounter(BaseSolution):
         >>> print(f"Total tracks: {results.total_tracks}")
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """Initialize the RegionCounter for real-time object counting in user-defined regions."""
         super().__init__(**kwargs)
-        self.region_template = {
-            "name": "Default Region",
-            "polygon": None,
-            "prepared_polygon": None,
-            "counts": 0,
-            "region_color": (255, 255, 255),
-            "text_color": (0, 0, 0),
-        }
+        self.region_template = {'name': 'Default Region', 'polygon': None, 'prepared_polygon': None, 'counts': 0, 'region_color': (255, 255, 255), 'text_color': (0, 0, 0)}
         self.region_counts = {}
         self.counting_regions = []
         self.initialize_regions()
 
-    def add_region(
-        self,
-        name: str,
-        polygon_points: list[tuple],
-        region_color: tuple[int, int, int],
-        text_color: tuple[int, int, int],
-    ) -> dict[str, Any]:
+    def add_region(self, name, polygon_points, region_color, text_color):
         """Add a new region to the counting list based on the provided template with specific attributes.
 
         Args:
@@ -71,21 +51,10 @@ class RegionCounter(BaseSolution):
             (dict[str, Any]): Region information including name, polygon, and display colors.
         """
         if len(polygon_points) < 3:
-            raise ValueError(
-                f"RegionCounter requires regions with at least 3 points to form a polygon, "
-                f"but got {len(polygon_points)} for '{name}'."
-            )
+            raise ValueError(f"RegionCounter requires regions with at least 3 points to form a polygon, but got {len(polygon_points)} for '{name}'.")
         polygon = self.Polygon(polygon_points)
         region = self.region_template.copy()
-        region.update(
-            {
-                "name": name,
-                "polygon": polygon,
-                "prepared_polygon": self.prep(polygon),
-                "region_color": region_color,
-                "text_color": text_color,
-            }
-        )
+        region.update({'name': name, 'polygon': polygon, 'prepared_polygon': self.prep(polygon), 'region_color': region_color, 'text_color': text_color})
         self.counting_regions.append(region)
         return region
 
@@ -93,12 +62,12 @@ class RegionCounter(BaseSolution):
         """Initialize regions from `self.region` only once."""
         if self.region is None:
             self.initialize_region()
-        if not isinstance(self.region, dict):  # Ensure self.region is initialized and structured as a dictionary
-            self.region = {"Region#01": self.region}
-        for i, (name, pts) in enumerate(self.region.items()):
+        if not isinstance(self.region, dict):
+            self.region = {'Region#01': self.region}
+        for (i, (name, pts)) in enumerate(self.region.items()):
             self.add_region(name, pts, colors(i, True), (255, 255, 255))
 
-    def process(self, im0: np.ndarray) -> SolutionResults:
+    def process(self, im0):
         """Process the input frame to detect and count objects within each defined region.
 
         Args:
@@ -110,33 +79,22 @@ class RegionCounter(BaseSolution):
         """
         self.extract_tracks(im0)
         annotator = SolutionAnnotator(im0, line_width=self.line_width)
-        self.region_counts = {region["name"]: 0 for region in self.counting_regions}
-
-        for box, cls, track_id, conf in zip(self.boxes, self.clss, self.track_ids, self.confs):
+        self.region_counts = {region['name']: 0 for region in self.counting_regions}
+        for (box, cls, track_id, conf) in zip(self.boxes, self.clss, self.track_ids, self.confs):
             annotator.box_label(box, label=self.adjust_box_label(cls, conf, track_id), color=colors(track_id, True))
-            x0, y0, x1, y1 = self.get_enclosing_box(box)
+            (x0, y0, x1, y1) = self.get_enclosing_box(box)
             center = self.Point(((x0 + x1) / 2, (y0 + y1) / 2))
             for region in self.counting_regions:
-                if region["prepared_polygon"].contains(center):
-                    region["counts"] += 1
-                    self.region_counts[region["name"]] = region["counts"]
-
-        # Display region counts
+                if region['prepared_polygon'].contains(center):
+                    region['counts'] += 1
+                    self.region_counts[region['name']] = region['counts']
         for region in self.counting_regions:
-            poly = region["polygon"]
+            poly = region['polygon']
             pts = list(map(tuple, np.array(poly.exterior.coords, dtype=np.int32)))
-            (x1, y1), (x2, y2) = [(int(poly.centroid.x), int(poly.centroid.y))] * 2
-            annotator.draw_region(pts, region["region_color"], self.line_width * 2)
-            annotator.adaptive_label(
-                [x1, y1, x2, y2],
-                label=str(region["counts"]),
-                color=region["region_color"],
-                txt_color=region["text_color"],
-                margin=self.line_width * 4,
-                shape="rect",
-            )
-            region["counts"] = 0  # Reset for next frame
+            ((x1, y1), (x2, y2)) = [(int(poly.centroid.x), int(poly.centroid.y))] * 2
+            annotator.draw_region(pts, region['region_color'], self.line_width * 2)
+            annotator.adaptive_label([x1, y1, x2, y2], label=str(region['counts']), color=region['region_color'], txt_color=region['text_color'], margin=self.line_width * 4, shape='rect')
+            region['counts'] = 0
         plot_im = annotator.result()
         self.display_output(plot_im)
-
         return SolutionResults(plot_im=plot_im, total_tracks=len(self.track_ids), region_counts=self.region_counts)

@@ -1,28 +1,14 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """Shared helpers for operating on lists of track objects across trackers.
 
 These functions are intentionally generic: they only touch attributes that every track
 implementation exposes (`track_id`, `frame_id`, `start_frame`, `xyxy`, `mean`, `covariance`).
 """
-
-from __future__ import annotations
-
-__all__ = ("joint_stracks", "merge_track_pools", "multi_gmc", "parse_bboxes", "remove_duplicate_stracks", "sub_stracks")
-
+__all__ = ('joint_stracks', 'merge_track_pools', 'multi_gmc', 'parse_bboxes', 'remove_duplicate_stracks', 'sub_stracks')
 import numpy as np
-
 from ..basetrack import TrackState
 from . import matching
 
-
-def merge_track_pools(
-    tracker,
-    activated: list,
-    refind: list,
-    lost: list,
-    removed: list,
-    removed_buffer: int = 1000,
-) -> None:
+def merge_track_pools(tracker, activated, refind, lost, removed, removed_buffer=1000):
     """Apply the standard end-of-frame bookkeeping to a tracker's persistent pools in place.
 
     Merges newly activated and re-found tracks into `tracker.tracked_stracks`, moves the transitioned tracks into
@@ -47,16 +33,13 @@ def merge_track_pools(
     tracker.lost_stracks = sub_stracks(tracker.lost_stracks, tracker.tracked_stracks)
     tracker.lost_stracks.extend(lost)
     tracker.lost_stracks = sub_stracks(tracker.lost_stracks, tracker.removed_stracks)
-    tracker.tracked_stracks, tracker.lost_stracks = remove_duplicate_stracks(
-        tracker.tracked_stracks, tracker.lost_stracks
-    )
+    (tracker.tracked_stracks, tracker.lost_stracks) = remove_duplicate_stracks(tracker.tracked_stracks, tracker.lost_stracks)
     tracker.removed_stracks_frame = removed
     tracker.removed_stracks.extend(removed)
     if len(tracker.removed_stracks) > removed_buffer:
         tracker.removed_stracks = tracker.removed_stracks[-removed_buffer:]
 
-
-def parse_bboxes(results) -> np.ndarray:
+def parse_bboxes(results):
     """Return detection bounding boxes with appended indices from a Results-like object.
 
     Args:
@@ -66,11 +49,10 @@ def parse_bboxes(results) -> np.ndarray:
         (np.ndarray): Array of shape ``(N, 5)`` for ``xywh`` or ``(N, 6)`` for ``xywhr``, with the last column
             containing the original detection index.
     """
-    bboxes = results.xywhr if hasattr(results, "xywhr") else results.xywh
+    bboxes = results.xywhr if hasattr(results, 'xywhr') else results.xywh
     return np.concatenate([bboxes, np.arange(len(bboxes)).reshape(-1, 1)], axis=-1)
 
-
-def joint_stracks(atracks: list, btracks: list) -> list:
+def joint_stracks(atracks, btracks):
     """Combine two track lists into one, de-duplicating by `track_id`.
 
     Args:
@@ -87,8 +69,7 @@ def joint_stracks(atracks: list, btracks: list) -> list:
     a_ids = {t.track_id for t in atracks}
     return atracks + [t for t in btracks if t.track_id not in a_ids]
 
-
-def sub_stracks(atracks: list, btracks: list) -> list:
+def sub_stracks(atracks, btracks):
     """Filter out tracks from `atracks` whose `track_id` appears in `btracks`.
 
     Args:
@@ -105,8 +86,7 @@ def sub_stracks(atracks: list, btracks: list) -> list:
     btrack_ids = {t.track_id for t in btracks}
     return [t for t in atracks if t.track_id not in btrack_ids]
 
-
-def remove_duplicate_stracks(atracks: list, btracks: list, dup_thresh: float = 0.15) -> tuple[list, list]:
+def remove_duplicate_stracks(atracks, btracks, dup_thresh=0.15):
     """Remove duplicate tracks across two lists based on Intersection over Union (IoU) distance.
 
     Track pairs with IoU distance < `dup_thresh` (IoU > `1 - dup_thresh`) are treated as duplicates of the same
@@ -128,21 +108,20 @@ def remove_duplicate_stracks(atracks: list, btracks: list, dup_thresh: float = 0
     """
     pdist = matching.iou_distance(atracks, btracks)
     pairs = np.where(pdist < dup_thresh)
-    dupa, dupb = [], []
-    for p, q in zip(*pairs):
+    (dupa, dupb) = ([], [])
+    for (p, q) in zip(*pairs):
         timep = atracks[p].frame_id - atracks[p].start_frame
         timeq = btracks[q].frame_id - btracks[q].start_frame
         if timep > timeq:
             dupb.append(q)
         else:
             dupa.append(p)
-    dupa_set, dupb_set = set(dupa), set(dupb)
-    resa = [t for i, t in enumerate(atracks) if i not in dupa_set]
-    resb = [t for i, t in enumerate(btracks) if i not in dupb_set]
-    return resa, resb
+    (dupa_set, dupb_set) = (set(dupa), set(dupb))
+    resa = [t for (i, t) in enumerate(atracks) if i not in dupa_set]
+    resb = [t for (i, t) in enumerate(btracks) if i not in dupb_set]
+    return (resa, resb)
 
-
-def multi_gmc(stracks: list, H: np.ndarray) -> None:
+def multi_gmc(stracks, H):
     """Update multiple track positions and covariances using a 2x3 affine homography.
 
     The Kalman state is assumed to be laid out as `(*box, *box_velocity)` with the box center `(x, y)` in the first two
@@ -163,17 +142,12 @@ def multi_gmc(stracks: list, H: np.ndarray) -> None:
         return
     multi_mean = np.asarray([st.mean for st in stracks])
     multi_covariance = np.asarray([st.covariance for st in stracks])
-
     R = H[:2, :2]
     R8x8 = np.kron(np.eye(4, dtype=np.float32), R)
     t = H[:2, 2]
-
     multi_mean = np.matmul(R8x8, multi_mean[..., None])[..., 0]
     multi_mean[:, :2] += t
-    # Keep the right operand C-contiguous. An F-contiguous one sends matmul into BLAS's transposed-gemm kernel,
-    # which on macOS Accelerate leaves FP-exception flags set even for finite inputs — numpy then reports spurious
-    # divide/overflow/invalid RuntimeWarnings — and measures slower here than the untransposed kernel.
     multi_covariance = np.matmul(np.matmul(R8x8, multi_covariance), np.ascontiguousarray(R8x8.T))
-    for i, (mean, cov) in enumerate(zip(multi_mean, multi_covariance)):
+    for (i, (mean, cov)) in enumerate(zip(multi_mean, multi_covariance)):
         stracks[i].mean = mean
         stracks[i].covariance = cov

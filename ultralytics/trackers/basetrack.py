@@ -1,8 +1,5 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """Module defines the base classes and structures for object tracking in YOLO."""
-
 from typing import Any
-
 
 class TrackState:
     """Enumeration class representing the possible states of an object being tracked.
@@ -18,12 +15,10 @@ class TrackState:
         >>> if state == TrackState.New:
         ...     print("Object is newly detected.")
     """
-
     New = 0
     Tracked = 1
     Lost = 2
     Removed = 3
-
 
 class BaseTrack:
     """Base class for object tracking, providing foundational attributes and methods.
@@ -53,7 +48,6 @@ class BaseTrack:
         >>> track.mark_lost()
         >>> print(track.state)  # Output: 2 (TrackState.Lost)
     """
-
     _count = 0
 
     def __init__(self):
@@ -66,37 +60,37 @@ class BaseTrack:
         self.frame_id = 0
 
     @property
-    def end_frame(self) -> int:
+    def end_frame(self):
         """Return the ID of the most recent frame where the object was tracked."""
         return self.frame_id
 
     @staticmethod
-    def next_id() -> int:
+    def next_id():
         """Increment and return the next unique global track ID for object tracking."""
         BaseTrack._count += 1
         return BaseTrack._count
 
-    def activate(self, *args: Any) -> None:
+    def activate(self, *args):
         """Activate the track with provided arguments, initializing necessary attributes for tracking."""
         raise NotImplementedError
 
-    def predict(self) -> None:
+    def predict(self):
         """Predict the next state of the track based on the current state and tracking model."""
         raise NotImplementedError
 
-    def update(self, *args: Any, **kwargs: Any) -> None:
+    def update(self, *args, **kwargs):
         """Update the track with new observations and data, modifying its state and attributes accordingly."""
         raise NotImplementedError
 
-    def mark_lost(self) -> None:
+    def mark_lost(self):
         """Mark the track as lost by updating its state to TrackState.Lost."""
         self.state = TrackState.Lost
 
-    def mark_removed(self) -> None:
+    def mark_removed(self):
         """Mark the track as removed by setting its state to TrackState.Removed."""
         self.state = TrackState.Removed
 
     @staticmethod
-    def reset_id() -> None:
+    def reset_id():
         """Reset the global track ID counter to its initial value."""
         BaseTrack._count = 0

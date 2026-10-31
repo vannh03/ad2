@@ -1,20 +1,13 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 import ast
 import contextlib
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
-
 import torch
-
 from ultralytics.utils import YAML
 
-
-def _read_proto_map(file: Path, path: tuple[int, ...]) -> dict:
+def _read_proto_map(file, path):
     """Read a protobuf ``map<string, string>`` at a nested field path, without importing the format's framework.
 
     Args:
@@ -34,28 +27,25 @@ def _read_proto_map(file: Path, path: tuple[int, ...]) -> dict:
             """Decode the base-128 varint at the current offset."""
             nonlocal i
             v = shift = 0
-            while buf[i] & 0x80:
-                v, i, shift = v | (buf[i] & 0x7F) << shift, i + 1, shift + 7
-            v, i = v | buf[i] << shift, i + 1
+            while buf[i] & 128:
+                (v, i, shift) = (v | (buf[i] & 127) << shift, i + 1, shift + 7)
+            (v, i) = (v | buf[i] << shift, i + 1)
             return v
-
         while i < len(buf):
             tag = varint()
-            if tag & 7 == 0:  # varint field, i.e. ONNX ir_version
+            if tag & 7 == 0:
                 varint()
-            elif tag & 7 == 2:  # length-delimited field, i.e. a nested message, string or weights blob
+            elif tag & 7 == 2:
                 n = varint()
-                yield tag >> 3, buf[i : i + n]  # a memoryview slice, so a large payload is never copied
+                yield (tag >> 3, buf[i:i + n])
                 i += n
             else:
-                return  # these protos carry no fixed-width fields
-
-    with open(file, "rb") as f:
+                return
+    with open(file, 'rb') as f:
         messages = [memoryview(mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ))]
     for number in path:
-        messages = [payload for m in messages for n, payload in fields(m) if n == number]
-    return {bytes(e[1]).decode(): bytes(e.get(2, b"")).decode() for e in map(dict, map(fields, messages))}
-
+        messages = [payload for m in messages for (n, payload) in fields(m) if n == number]
+    return {bytes(e[1]).decode(): bytes(e.get(2, b'')).decode() for e in map(dict, map(fields, messages))}
 
 class BaseBackend(ABC):
     """Base class for all inference backends.
@@ -81,7 +71,7 @@ class BaseBackend(ABC):
         metadata (dict): Model metadata dictionary containing export configuration.
     """
 
-    def __init__(self, weight: str | torch.nn.Module, device: torch.device | str, fp16: bool = False):
+    def __init__(self, weight, device, fp16=False):
         """Initialize the base backend with common attributes and load the model.
 
         Args:
@@ -105,7 +95,7 @@ class BaseBackend(ABC):
         self.load_model(weight)
 
     @abstractmethod
-    def load_model(self, weight: str | torch.nn.Module) -> None:
+    def load_model(self, weight):
         """Load the model from a weights file or module instance.
 
         Args:
@@ -114,7 +104,7 @@ class BaseBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def forward(self, im: torch.Tensor) -> Any:
+    def forward(self, im):
         """Run inference on the input image tensor.
 
         Args:
@@ -125,14 +115,14 @@ class BaseBackend(ABC):
         """
         raise NotImplementedError
 
-    def __call__(self, *args, **kwargs) -> Any:
+    def __call__(self, *args, **kwargs):
         """Allow the backend instance to be called directly to perform inference, forwarding arguments to the `forward`
         method.
         """
         return self.forward(*args, **kwargs)
 
     @staticmethod
-    def engine_header(file: str | Path) -> tuple[int, dict]:
+    def engine_header(file):
         """Read the metadata header an Ultralytics ``.engine`` export writes ahead of its serialized engine.
 
         Args:
@@ -141,16 +131,16 @@ class BaseBackend(ABC):
         Returns:
             (tuple[int, dict]): Byte offset of the engine bytes and the header metadata, ``(0, {})`` without a header.
         """
-        with open(file, "rb") as f:
-            n = int.from_bytes(f.read(4), byteorder="little")  # 4-byte little-endian JSON length, if a header exists
-            if 0 < n <= f.seek(0, 2) - 4:  # a length overrunning the file is not a header
+        with open(file, 'rb') as f:
+            n = int.from_bytes(f.read(4), byteorder='little')
+            if 0 < n <= f.seek(0, 2) - 4:
                 f.seek(4)
-                with contextlib.suppress(ValueError):  # engine bytes are not JSON, so a real header parses
-                    return 4 + n, json.loads(f.read(n))
-        return 0, {}
+                with contextlib.suppress(ValueError):
+                    return (4 + n, json.loads(f.read(n)))
+        return (0, {})
 
     @staticmethod
-    def read_metadata(file: str | Path) -> dict:
+    def read_metadata(file):
         """Read Ultralytics metadata from an export without loading it or importing its framework.
 
         Single-file formats embed metadata in a length-prefixed JSON header (``.engine``), a zip entry
@@ -166,32 +156,31 @@ class BaseBackend(ABC):
             (dict): Parsed metadata, empty for a third-party export or one predating metadata embedding.
         """
         import zipfile
-
         p = Path(file)
         try:
-            if p.suffix == ".engine":  # 4-byte little-endian length then that many bytes of JSON
+            if p.suffix == '.engine':
                 return BaseBackend.engine_header(p)[1]
-            if p.suffix in {".tflite", ".torchscript"}:  # metadata appended to or saved inside the model zip
+            if p.suffix in {'.tflite', '.torchscript'}:
                 with zipfile.ZipFile(p) as z:
                     names = z.namelist()
-                    if "metadata.json" in names:  # litert-torch and single-file tflite exports
-                        return json.loads(z.read("metadata.json"))
-                    name = next((n for n in names if n.endswith("extra/config.txt")), None)  # torch.jit extra file
+                    if 'metadata.json' in names:
+                        return json.loads(z.read('metadata.json'))
+                    name = next((n for n in names if n.endswith('extra/config.txt')), None)
                     return json.loads(z.read(name)) if name else ast.literal_eval(z.read(names[0]).decode())
-            if p.suffix == ".onnx" or p.name.endswith("_imx_model"):  # IMX packages its ONNX in a directory
-                return _read_proto_map(next(p.glob("*.onnx")) if p.is_dir() else p, (14,))  # metadata_props
-            if p.suffix in {".mlpackage", ".mlmodel"}:  # description.metadata.userDefined
-                return _read_proto_map(next(p.rglob("*.mlmodel")) if p.is_dir() else p, (2, 100, 100))
-            if p.suffix == ".aimodel":  # Core AI keeps it in the asset's own metadata.json
-                return json.loads((p / "metadata.json").read_text()).get("creatorDefinedMetadata", {})
-            sidecar = (p if p.is_dir() else p.parent) / "metadata.yaml"  # openvino, ncnn, paddle, saved_model, ...
-            if p.suffix == ".pb":  # a frozen graph keeps its metadata in the sibling saved_model directory
-                sidecar = next(p.resolve().parent.rglob(f"{p.stem}_saved_model*/metadata.yaml"), sidecar)
+            if p.suffix == '.onnx' or p.name.endswith('_imx_model'):
+                return _read_proto_map(next(p.glob('*.onnx')) if p.is_dir() else p, (14,))
+            if p.suffix in {'.mlpackage', '.mlmodel'}:
+                return _read_proto_map(next(p.rglob('*.mlmodel')) if p.is_dir() else p, (2, 100, 100))
+            if p.suffix == '.aimodel':
+                return json.loads((p / 'metadata.json').read_text()).get('creatorDefinedMetadata', {})
+            sidecar = (p if p.is_dir() else p.parent) / 'metadata.yaml'
+            if p.suffix == '.pb':
+                sidecar = next(p.resolve().parent.rglob(f'{p.stem}_saved_model*/metadata.yaml'), sidecar)
             return YAML.load(sidecar) if sidecar.exists() else {}
-        except Exception:  # a third-party, truncated or metadata-less artifact
+        except Exception:
             return {}
 
-    def apply_metadata(self, metadata: dict | None) -> None:
+    def apply_metadata(self, metadata):
         """Process and apply model metadata to backend attributes.
 
         Handles type conversions for common metadata fields (e.g., stride, batch, names) and sets them as
@@ -202,21 +191,13 @@ class BaseBackend(ABC):
         """
         if not metadata:
             return
-
-        # Store raw metadata
         self.metadata = metadata
-
-        # Process type conversions for known fields
-        for k, v in metadata.items():
-            if k in {"stride", "batch", "channels"}:
+        for (k, v) in metadata.items():
+            if k in {'stride', 'batch', 'channels'}:
                 metadata[k] = int(v)
-            elif k in {"imgsz", "names", "kpt_shape", "kpt_names", "args", "end2end"} and isinstance(v, str):
+            elif k in {'imgsz', 'names', 'kpt_shape', 'kpt_names', 'args', 'end2end'} and isinstance(v, str):
                 metadata[k] = ast.literal_eval(v)
-
-        # Handle models exported with end-to-end NMS
-        metadata["end2end"] = bool(metadata.get("end2end", False) or metadata.get("args", {}).get("nms", False))
-        metadata["dynamic"] = metadata.get("args", {}).get("dynamic", self.dynamic)
-
-        # Apply all metadata fields as backend attributes
-        for k, v in metadata.items():
+        metadata['end2end'] = bool(metadata.get('end2end', False) or metadata.get('args', {}).get('nms', False))
+        metadata['dynamic'] = metadata.get('args', {}).get('dynamic', self.dynamic)
+        for (k, v) in metadata.items():
             setattr(self, k, v)

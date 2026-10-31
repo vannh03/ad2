@@ -1,12 +1,6 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
-
 import cv2
-
 
 @dataclass
 class SolutionConfig:
@@ -64,55 +58,52 @@ class SolutionConfig:
         >>> cfg.update(show=False, conf=0.3)
         >>> print(cfg.model)
     """
+    source = None
+    model = None
+    classes = None
+    show_conf = True
+    show_labels = True
+    show_boxes = True
+    region = None
+    colormap = cv2.COLORMAP_DEEPGREEN
+    show_in = True
+    show_out = True
+    up_angle = 145.0
+    down_angle = 90
+    kpts = field(default_factory=lambda : [6, 8, 10])
+    analytics_type = 'line'
+    figsize = (12.8, 7.2)
+    blur_ratio = 0.5
+    vision_point = (20, 20)
+    crop_dir = 'cropped-detections'
+    json_file = None
+    line_width = 2
+    records = 5
+    fps = 30.0
+    max_hist = 5
+    meter_per_pixel = 0.05
+    max_speed = 120
+    show = False
+    iou = 0.7
+    conf = 0.25
+    device = None
+    max_det = 300
+    quantize = None
+    imgsz = 640
+    tracker = 'botsort.yaml'
+    verbose = True
+    data = 'images'
 
-    source: str | None = None
-    model: str | None = None
-    classes: list[int] | None = None
-    show_conf: bool = True
-    show_labels: bool = True
-    show_boxes: bool = True
-    region: list[tuple[int, int]] | None = None
-    colormap: int | None = cv2.COLORMAP_DEEPGREEN
-    show_in: bool = True
-    show_out: bool = True
-    up_angle: float = 145.0
-    down_angle: int = 90
-    kpts: list[int] = field(default_factory=lambda: [6, 8, 10])
-    analytics_type: str = "line"
-    figsize: tuple[float, float] | None = (12.8, 7.2)
-    blur_ratio: float = 0.5
-    vision_point: tuple[int, int] = (20, 20)
-    crop_dir: str = "cropped-detections"
-    json_file: str | None = None
-    line_width: int = 2
-    records: int = 5
-    fps: float = 30.0
-    max_hist: int = 5
-    meter_per_pixel: float = 0.05
-    max_speed: int = 120
-    show: bool = False
-    iou: float = 0.7
-    conf: float = 0.25
-    device: str | None = None
-    max_det: int = 300
-    quantize: int | str | None = None
-    imgsz: int = 640
-    tracker: str = "botsort.yaml"
-    verbose: bool = True
-    data: str = "images"
-
-    def update(self, **kwargs: Any):
+    def update(self, **kwargs):
         """Update configuration parameters with new values provided as keyword arguments."""
-        if "half" in kwargs:  # deprecated alias, forwarded to quantize
+        if 'half' in kwargs:
             from ultralytics.utils import deprecation_warn
-
-            deprecation_warn("half", "quantize")
-            kwargs["quantize"] = 16 if kwargs.pop("half") else None
-        for key, value in kwargs.items():
+            deprecation_warn('half', 'quantize')
+            kwargs['quantize'] = 16 if kwargs.pop('half') else None
+        for (key, value) in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
             else:
-                url = "https://docs.ultralytics.com/solutions#solutions-arguments"
-                raise ValueError(f"{key} is not a valid solution argument, see {url}")
-
+                url = 'https://docs.ultralytics.com/solutions#solutions-arguments'
+                raise ValueError(f'{key} is not a valid solution argument, see {url}')
         return self

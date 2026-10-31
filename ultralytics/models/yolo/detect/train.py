@@ -1,16 +1,10 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 import math
 import random
 from copy import copy
 from typing import Any
-
 import numpy as np
 import torch
 from torch import nn
-
 from ultralytics.data import build_dataloader, build_yolo_dataset
 from ultralytics.engine.trainer import BaseTrainer
 from ultralytics.models import yolo
@@ -19,7 +13,6 @@ from ultralytics.utils import DEFAULT_CFG, LOGGER, RANK
 from ultralytics.utils.patches import override_configs
 from ultralytics.utils.plotting import plot_images, plot_labels
 from ultralytics.utils.torch_utils import torch_distributed_zero_first, unwrap_model
-
 
 class DetectionTrainer(BaseTrainer):
     """A class extending the BaseTrainer class for training based on a detection model.
@@ -51,7 +44,7 @@ class DetectionTrainer(BaseTrainer):
         >>> trainer.train()
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides: dict[str, Any] | None = None, _callbacks: dict | None = None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize a DetectionTrainer object for training YOLO object detection models.
 
         Args:
@@ -61,7 +54,7 @@ class DetectionTrainer(BaseTrainer):
         """
         super().__init__(cfg, overrides, _callbacks)
 
-    def build_dataset(self, img_path: str, mode: str = "train", batch: int | None = None):
+    def build_dataset(self, img_path, mode='train', batch=None):
         """Build YOLO Dataset for training or validation.
 
         Args:
@@ -73,9 +66,9 @@ class DetectionTrainer(BaseTrainer):
             (Dataset): YOLO dataset object configured for the specified mode.
         """
         gs = max(int(unwrap_model(self.model).stride.max()), 32)
-        return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, rect=mode == "val", stride=gs)
+        return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, rect=mode == 'val', stride=gs)
 
-    def get_dataloader(self, dataset_path: str, batch_size: int = 16, rank: int = 0, mode: str = "train"):
+    def get_dataloader(self, dataset_path, batch_size=16, rank=0, mode='train'):
         """Construct and return dataloader for the specified mode.
 
         Args:
@@ -87,24 +80,16 @@ class DetectionTrainer(BaseTrainer):
         Returns:
             (DataLoader): PyTorch dataloader object.
         """
-        assert mode in {"train", "val"}, f"Mode must be 'train' or 'val', not {mode}."
-        with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
+        assert mode in {'train', 'val'}, f"Mode must be 'train' or 'val', not {mode}."
+        with torch_distributed_zero_first(rank):
             dataset = self.build_dataset(dataset_path, mode, batch_size)
-        shuffle = mode == "train"
-        if getattr(dataset, "rect", False) and shuffle and not np.all(dataset.batch_shapes == dataset.batch_shapes[0]):
+        shuffle = mode == 'train'
+        if getattr(dataset, 'rect', False) and shuffle and (not np.all(dataset.batch_shapes == dataset.batch_shapes[0])):
             LOGGER.warning("'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
             shuffle = False
-        return build_dataloader(
-            dataset,
-            batch=batch_size,
-            workers=self.args.workers if mode == "train" else self.args.workers * 2,
-            shuffle=shuffle,
-            rank=rank,
-            drop_last=self.args.compile and mode == "train",
-            device=self.device,
-        )
+        return build_dataloader(dataset, batch=batch_size, workers=self.args.workers if mode == 'train' else self.args.workers * 2, shuffle=shuffle, rank=rank, drop_last=self.args.compile and mode == 'train', device=self.device)
 
-    def preprocess_batch(self, batch: dict) -> dict:
+    def preprocess_batch(self, batch):
         """Preprocess a batch of images by scaling and converting to float.
 
         Args:
@@ -113,54 +98,41 @@ class DetectionTrainer(BaseTrainer):
         Returns:
             (dict): Preprocessed batch with normalized images.
         """
-        for k, v in batch.items():
+        for (k, v) in batch.items():
             if isinstance(v, torch.Tensor):
-                batch[k] = v.to(self.device, non_blocking=self.device.type not in {"cpu", "mps"})
-        batch["img"] = batch["img"].float() / 255
+                batch[k] = v.to(self.device, non_blocking=self.device.type not in {'cpu', 'mps'})
+        batch['img'] = batch['img'].float() / 255
         if self.args.multi_scale > 0.0:
-            imgs = batch["img"]
-            sz = (
-                random.randrange(
-                    max(self.stride, int(self.args.imgsz * (1.0 - self.args.multi_scale))),  # min imgsz
-                    int(self.args.imgsz * (1.0 + self.args.multi_scale) + self.stride),  # max imgsz
-                )
-                // self.stride
-                * self.stride
-            )  # size
-            sf = sz / max(imgs.shape[2:])  # scale factor
+            imgs = batch['img']
+            sz = random.randrange(max(self.stride, int(self.args.imgsz * (1.0 - self.args.multi_scale))), int(self.args.imgsz * (1.0 + self.args.multi_scale) + self.stride)) // self.stride * self.stride
+            sf = sz / max(imgs.shape[2:])
             if sf != 1:
-                ns = [
-                    math.ceil(x * sf / self.stride) * self.stride for x in imgs.shape[2:]
-                ]  # new shape (stretched to gs-multiple)
-                imgs = nn.functional.interpolate(imgs, size=ns, mode="bilinear", align_corners=False)
-            batch["img"] = imgs
+                ns = [math.ceil(x * sf / self.stride) * self.stride for x in imgs.shape[2:]]
+                imgs = nn.functional.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
+            batch['img'] = imgs
         return batch
 
     def set_model_attributes(self):
         """Set model attributes based on dataset information."""
-        # Nl = de_parallel(self.model).model[-1].nl  # number of detection layers (to scale hyps)
-        # self.args.box *= 3 / nl  # scale to layers
-        # self.args.cls *= self.data["nc"] / 80 * 3 / nl  # scale to classes and layers
-        # self.args.cls *= (self.args.imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
-        self.model.nc = self.data["nc"]  # attach number of classes to model
-        self.model.names = self.data["names"]  # attach class names to model
-        self.model.args = self.args  # attach hyperparameters to model
+        self.model.nc = self.data['nc']
+        self.model.names = self.data['names']
+        self.model.args = self.args
 
     def set_model_names_for_load(self, model):
         """Set target dataset names before loading weights so cls heads can remap by name."""
-        if getattr(self.args, "cls_remap", True) and self.data.get("names"):
-            model.names = self.data["names"]
+        if getattr(self.args, 'cls_remap', True) and self.data.get('names'):
+            model.names = self.data['names']
         return model
 
     def get_class_counts(self):
         """Return per-class instance counts from the training dataset labels."""
-        classes = np.concatenate([lb["cls"].flatten() for lb in self.train_loader.dataset.labels], 0)
-        return np.bincount(classes.astype(int), minlength=self.data["nc"]).astype(np.float32)
+        classes = np.concatenate([lb['cls'].flatten() for lb in self.train_loader.dataset.labels], 0)
+        return np.bincount(classes.astype(int), minlength=self.data['nc']).astype(np.float32)
 
     def compute_class_weights(self, class_counts):
         """Convert class counts to inverse-frequency weights raised to the power of cls_pw."""
         class_counts = np.where(class_counts == 0, 1.0, class_counts)
-        return (1.0 / class_counts) ** self.args.cls_pw  # apply power directly
+        return (1.0 / class_counts) ** self.args.cls_pw
 
     def set_class_weights(self):
         """Compute and set class weights for handling class imbalance.
@@ -169,21 +141,21 @@ class DetectionTrainer(BaseTrainer):
         raised to the power of cls_pw (0 < cls_pw <= 1 dampens; values are restricted to the range [0, 1]).
         Final weights are normalized so their mean equals 1.0.
         """
-        assert 0 <= self.args.cls_pw <= 1.0, "cls_pw must be in the range [0, 1]"
+        assert 0 <= self.args.cls_pw <= 1.0, 'cls_pw must be in the range [0, 1]'
         if self.args.cls_pw == 0.0:
             return
         class_counts = self.get_class_counts()
-        if not class_counts.any():  # nothing counted (e.g. missing/unreadable masks); keep default weights
+        if not class_counts.any():
             return
         weights = self.compute_class_weights(class_counts)
-        weights = weights / weights.mean()  # normalize so mean equals 1.0
+        weights = weights / weights.mean()
         model = unwrap_model(self.model)
-        if hasattr(model, "student_model"):
-            model = model.student_model  # distillation: the student model builds the loss criterion
+        if hasattr(model, 'student_model'):
+            model = model.student_model
         model.class_weights = torch.from_numpy(weights).to(self.device)
-        LOGGER.info(f"Class weights: {model.class_weights.cpu().numpy().round(3)}")
+        LOGGER.info(f'Class weights: {model.class_weights.cpu().numpy().round(3)}')
 
-    def get_model(self, cfg: str | None = None, weights: str | None = None, verbose: bool = True):
+    def get_model(self, cfg=None, weights=None, verbose=True):
         """Return a YOLO detection model.
 
         Args:
@@ -194,56 +166,41 @@ class DetectionTrainer(BaseTrainer):
         Returns:
             (DetectionModel): YOLO detection model.
         """
-        model = self.set_model_names_for_load(
-            DetectionModel(cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1)
-        )
+        model = self.set_model_names_for_load(DetectionModel(cfg, nc=self.data['nc'], ch=self.data['channels'], verbose=verbose and RANK == -1))
         if weights:
             model.load(weights)
         return model
 
     def get_validator(self):
         """Return a DetectionValidator for YOLO model validation."""
-        return yolo.detect.DetectionValidator(
-            self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
-        )
+        return yolo.detect.DetectionValidator(self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks)
 
     def _build_train_pipeline(self):
         """Build the training pipeline and align the default detection limit with observed dataset object counts."""
         super()._build_train_pipeline()
-        if self.args.task in {"detect", "segment", "pose", "obb"}:
-            datasets = {"train": self.train_loader.dataset, "val": self.test_loader.dataset}
+        if self.args.task in {'detect', 'segment', 'pose', 'obb'}:
+            datasets = {'train': self.train_loader.dataset, 'val': self.test_loader.dataset}
             yolo.detect.DetectionValidator._check_max_det(self.args, datasets)
             unwrap_model(self.model).set_head_attr(max_det=self.args.max_det)
 
     def progress_string(self):
         """Return a formatted string of training progress with epoch, GPU memory, loss, instances and size."""
-        return ("\n" + "%11s" * (4 + len(self.loss_names))) % (
-            "Epoch",
-            "GPU_mem",
-            *self.loss_names,
-            "Instances",
-            "Size",
-        )
+        return ('\n' + '%11s' * (4 + len(self.loss_names))) % ('Epoch', 'GPU_mem', *self.loss_names, 'Instances', 'Size')
 
-    def plot_training_samples(self, batch: dict[str, Any], ni: int) -> None:
+    def plot_training_samples(self, batch, ni):
         """Plot training samples with their annotations.
 
         Args:
             batch (dict[str, Any]): Dictionary containing batch data.
             ni (int): Batch index used for naming the output file.
         """
-        plot_images(
-            labels=batch,
-            paths=batch["im_file"],
-            fname=self.save_dir / f"train_batch{ni}.jpg",
-            on_plot=self.on_plot,
-        )
+        plot_images(labels=batch, paths=batch['im_file'], fname=self.save_dir / f'train_batch{ni}.jpg', on_plot=self.on_plot)
 
     def plot_training_labels(self):
         """Create a labeled training plot of the YOLO model."""
-        boxes = np.concatenate([lb["bboxes"] for lb in self.train_loader.dataset.labels], 0)
-        cls = np.concatenate([lb["cls"] for lb in self.train_loader.dataset.labels], 0)
-        plot_labels(boxes, cls.squeeze(), names=self.data["names"], save_dir=self.save_dir, on_plot=self.on_plot)
+        boxes = np.concatenate([lb['bboxes'] for lb in self.train_loader.dataset.labels], 0)
+        cls = np.concatenate([lb['cls'] for lb in self.train_loader.dataset.labels], 0)
+        plot_labels(boxes, cls.squeeze(), names=self.data['names'], save_dir=self.save_dir, on_plot=self.on_plot)
 
     def auto_batch(self):
         """Get optimal batch size by calculating memory occupation of model.
@@ -251,9 +208,9 @@ class DetectionTrainer(BaseTrainer):
         Returns:
             (int): Optimal batch size.
         """
-        with override_configs(self.args, overrides={"cache": False}) as self.args:
-            train_dataset = self.build_dataset(self.data["train"], mode="train", batch=16)
-        max_num_obj = max(len(label["cls"]) for label in train_dataset.labels) * 4  # 4 for mosaic augmentation
+        with override_configs(self.args, overrides={'cache': False}) as self.args:
+            train_dataset = self.build_dataset(self.data['train'], mode='train', batch=16)
+        max_num_obj = max((len(label['cls']) for label in train_dataset.labels)) * 4
         n = len(train_dataset)
-        del train_dataset  # free memory
+        del train_dataset
         return super().auto_batch(max_num_obj, dataset_size=n)

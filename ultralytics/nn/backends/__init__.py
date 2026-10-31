@@ -1,11 +1,9 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """Ultralytics YOLO inference backends.
 
 This package provides modular inference backends for various deep learning frameworks and hardware accelerators.
 Each backend implements the `BaseBackend` interface and can be used independently or through the unified
 `AutoBackend` dispatcher for automatic format detection and inference routing.
 """
-
 from .ascend import AscendBackend
 from .axelera import AxeleraBackend
 from .base import BaseBackend
@@ -26,28 +24,4 @@ from .rknn import RKNNBackend
 from .tensorflow import TensorFlowBackend
 from .tensorrt import TensorRTBackend
 from .triton import TritonBackend
-
-__all__ = [
-    "AscendBackend",
-    "AxeleraBackend",
-    "BaseBackend",
-    "CoreAIBackend",
-    "CoreMLBackend",
-    "DeepXBackend",
-    "ExecuTorchBackend",
-    "HailoBackend",
-    "LiteRTBackend",
-    "MNNBackend",
-    "NCNNBackend",
-    "ONNXBackend",
-    "ONNXIMXBackend",
-    "OpenVINOBackend",
-    "PaddleBackend",
-    "PyTorchBackend",
-    "QNNBackend",
-    "RKNNBackend",
-    "TensorFlowBackend",
-    "TensorRTBackend",
-    "TorchScriptBackend",
-    "TritonBackend",
-]
+__all__ = ['AscendBackend', 'AxeleraBackend', 'BaseBackend', 'CoreAIBackend', 'CoreMLBackend', 'DeepXBackend', 'ExecuTorchBackend', 'HailoBackend', 'LiteRTBackend', 'MNNBackend', 'NCNNBackend', 'ONNXBackend', 'ONNXIMXBackend', 'OpenVINOBackend', 'PaddleBackend', 'PyTorchBackend', 'QNNBackend', 'RKNNBackend', 'TensorFlowBackend', 'TensorRTBackend', 'TorchScriptBackend', 'TritonBackend']

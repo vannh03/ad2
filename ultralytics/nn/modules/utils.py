@@ -1,14 +1,9 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 import copy
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-
-__all__ = "inverse_sigmoid", "multi_scale_deformable_attn_pytorch"
-
+__all__ = ('inverse_sigmoid', 'multi_scale_deformable_attn_pytorch')
 
 def _get_clones(module, n):
     """Create a list of cloned modules from the given module.
@@ -29,7 +24,6 @@ def _get_clones(module, n):
     """
     return nn.ModuleList([copy.deepcopy(module) for _ in range(n)])
 
-
 def bias_init_with_prob(prior_prob=0.01):
     """Initialize conv/fc bias value according to a given probability value.
 
@@ -49,10 +43,9 @@ def bias_init_with_prob(prior_prob=0.01):
         >>> print(f"Bias initialization value: {bias:.4f}")
         Bias initialization value: -4.5951
     """
-    return float(-np.log((1 - prior_prob) / prior_prob))  # return bias_init
+    return float(-np.log((1 - prior_prob) / prior_prob))
 
-
-def inverse_sigmoid(x, eps=1e-5):
+def inverse_sigmoid(x, eps=1e-05):
     """Calculate the inverse sigmoid function for a tensor.
 
     This function applies the inverse of the sigmoid function to a tensor, which is useful in various neural network
@@ -75,13 +68,7 @@ def inverse_sigmoid(x, eps=1e-5):
     x2 = (1 - x).clamp(min=eps)
     return torch.log(x1 / x2)
 
-
-def multi_scale_deformable_attn_pytorch(
-    value: torch.Tensor,
-    value_spatial_shapes: list,
-    sampling_locations: torch.Tensor,
-    attention_weights: torch.Tensor,
-) -> torch.Tensor:
+def multi_scale_deformable_attn_pytorch(value, value_spatial_shapes, sampling_locations, attention_weights):
     """Implement multi-scale deformable attention in PyTorch.
 
     Folds the (num_levels, num_points) axes into a single num_total_points axis so every traced tensor stays at rank <=
@@ -102,25 +89,15 @@ def multi_scale_deformable_attn_pytorch(
     References:
         https://github.com/IDEA-Research/detrex/blob/main/detrex/layers/multi_scale_deform_attn.py
     """
-    bs, _, num_heads, embed_dims = value.shape
-    _, num_queries, _, num_total_points, _ = sampling_locations.shape
+    (bs, _, num_heads, embed_dims) = value.shape
+    (_, num_queries, _, num_total_points, _) = sampling_locations.shape
     num_points = num_total_points // len(value_spatial_shapes)
-
-    # (bs, num_keys, num_heads, embed_dims) -> tuple of (bs*num_heads, embed_dims, H*W) per level
-    value_list = value.permute(0, 2, 3, 1).flatten(0, 1).split([h * w for h, w in value_spatial_shapes], dim=-1)
-    # Map to grid_sample coords in [-1, 1] and split per level: tuple of (bs*num_heads, num_queries, num_points, 2)
+    value_list = value.permute(0, 2, 3, 1).flatten(0, 1).split([h * w for (h, w) in value_spatial_shapes], dim=-1)
     sampling_grids = (2 * sampling_locations - 1).permute(0, 2, 1, 3, 4).flatten(0, 1).split(num_points, dim=-2)
-
     sampling_value_list = []
-    for level, (h, w) in enumerate(value_spatial_shapes):
+    for (level, (h, w)) in enumerate(value_spatial_shapes):
         value_l = value_list[level].reshape(bs * num_heads, embed_dims, h, w)
-        sampling_value_list.append(
-            F.grid_sample(value_l, sampling_grids[level], mode="bilinear", padding_mode="zeros", align_corners=False)
-        )
+        sampling_value_list.append(F.grid_sample(value_l, sampling_grids[level], mode='bilinear', padding_mode='zeros', align_corners=False))
     attention_weights = attention_weights.permute(0, 2, 1, 3).reshape(bs * num_heads, 1, num_queries, num_total_points)
-    output = (
-        (torch.cat(sampling_value_list, dim=-1) * attention_weights)
-        .sum(-1)
-        .view(bs, num_heads * embed_dims, num_queries)
-    )
+    output = (torch.cat(sampling_value_list, dim=-1) * attention_weights).sum(-1).view(bs, num_heads * embed_dims, num_queries)
     return output.transpose(1, 2).contiguous()

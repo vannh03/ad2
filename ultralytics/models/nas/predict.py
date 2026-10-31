@@ -1,10 +1,6 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 import torch
-
 from ultralytics.models.yolo.detect.predict import DetectionPredictor
 from ultralytics.utils import ops
-
 
 class NASPredictor(DetectionPredictor):
     """Ultralytics YOLO NAS Predictor for object detection.
@@ -51,6 +47,6 @@ class NASPredictor(DetectionPredictor):
             >>> predictor = NAS("yolo_nas_s").predictor
             >>> results = predictor.postprocess(raw_preds, img, orig_imgs)
         """
-        boxes = ops.xyxy2xywh(preds_in[0][0])  # Convert bounding boxes from xyxy to xywh format
-        preds = torch.cat((boxes, preds_in[0][1]), -1).permute(0, 2, 1)  # Concatenate boxes with class scores
+        boxes = ops.xyxy2xywh(preds_in[0][0])
+        preds = torch.cat((boxes, preds_in[0][1]), -1).permute(0, 2, 1)
         return super().postprocess(preds, img, orig_imgs)

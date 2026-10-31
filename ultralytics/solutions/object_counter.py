@@ -1,13 +1,7 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from collections import defaultdict
 from typing import Any
-
 from ultralytics.solutions.solutions import BaseSolution, SolutionAnnotator, SolutionResults
 from ultralytics.utils.plotting import colors
-
 
 class ObjectCounter(BaseSolution):
     """A class to manage the counting of objects in a real-time video stream based on their tracks.
@@ -37,27 +31,19 @@ class ObjectCounter(BaseSolution):
         >>> print(f"Inward count: {results.in_count}, Outward count: {results.out_count}")
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """Initialize the ObjectCounter class for real-time object counting in video streams."""
         super().__init__(**kwargs)
+        self.in_count = 0
+        self.out_count = 0
+        self.counted_ids = set()
+        self.classwise_count = defaultdict(lambda : {'IN': 0, 'OUT': 0})
+        self.region_initialized = False
+        self.show_in = self.CFG['show_in']
+        self.show_out = self.CFG['show_out']
+        self.margin = self.line_width * 2
 
-        self.in_count = 0  # Counter for objects moving inward
-        self.out_count = 0  # Counter for objects moving outward
-        self.counted_ids = set()  # IDs of objects that have been counted
-        self.classwise_count = defaultdict(lambda: {"IN": 0, "OUT": 0})  # Dictionary for counts, categorized by class
-        self.region_initialized = False  # Flag indicating whether the region has been initialized
-
-        self.show_in = self.CFG["show_in"]
-        self.show_out = self.CFG["show_out"]
-        self.margin = self.line_width * 2  # Scales the background rectangle size to display counts properly
-
-    def count_objects(
-        self,
-        current_centroid: tuple[float, float],
-        track_id: int,
-        prev_position: tuple[float, float] | None,
-        cls: int,
-    ) -> None:
+    def count_objects(self, current_centroid, track_id, prev_position, cls):
         """Count objects within a polygonal or linear region based on their tracks.
 
         Args:
@@ -77,59 +63,42 @@ class ObjectCounter(BaseSolution):
         """
         if prev_position is None or track_id in self.counted_ids:
             return
-
-        if len(self.region) == 2:  # Linear region (defined as a line segment)
+        if len(self.region) == 2:
             if self.r_s.intersects(self.LineString([prev_position, current_centroid])):
-                # Determine orientation of the region (vertical or horizontal)
                 if abs(self.region[0][0] - self.region[1][0]) < abs(self.region[0][1] - self.region[1][1]):
-                    # Vertical region: Compare x-coordinates to determine direction
-                    if current_centroid[0] > prev_position[0]:  # Moving right
+                    if current_centroid[0] > prev_position[0]:
                         self.in_count += 1
-                        self.classwise_count[self.names[cls]]["IN"] += 1
-                    else:  # Moving left
+                        self.classwise_count[self.names[cls]]['IN'] += 1
+                    else:
                         self.out_count += 1
-                        self.classwise_count[self.names[cls]]["OUT"] += 1
-                # Horizontal region: Compare y-coordinates to determine direction
-                elif current_centroid[1] > prev_position[1]:  # Moving downward
+                        self.classwise_count[self.names[cls]]['OUT'] += 1
+                elif current_centroid[1] > prev_position[1]:
                     self.in_count += 1
-                    self.classwise_count[self.names[cls]]["IN"] += 1
-                else:  # Moving upward
+                    self.classwise_count[self.names[cls]]['IN'] += 1
+                else:
                     self.out_count += 1
-                    self.classwise_count[self.names[cls]]["OUT"] += 1
+                    self.classwise_count[self.names[cls]]['OUT'] += 1
                 self.counted_ids.add(track_id)
-
-        # An object fast enough to straddle the region leaves no centroid inside it, so count a crossing segment
-        # too, but only from outside: a track already inside has had the containment check since it entered.
-        elif len(self.region) > 2 and (
-            self.r_s.contains(self.Point(current_centroid))
-            or (
-                not self.r_s.contains(self.Point(prev_position))
-                and self.r_s.crosses(self.LineString([prev_position, current_centroid]))
-            )
-        ):
-            # Judge direction by the object's dominant motion axis over its recent track, not by the
-            # region's shape; a ~5-frame baseline is robust to tracker jitter where a 1-frame delta is not.
-            # The baseline is the oldest recent point OUTSIDE the region, so the entry vector is not
-            # polluted by an uncounted first frame that spawned inside (quick exit and re-entry).
+        elif len(self.region) > 2 and (self.r_s.contains(self.Point(current_centroid)) or (not self.r_s.contains(self.Point(prev_position)) and self.r_s.crosses(self.LineString([prev_position, current_centroid])))):
             window = self.track_history[track_id][-5:] or [prev_position]
             baseline = next((p for p in window if not self.r_s.contains(self.Point(p))), window[0])
             dx = current_centroid[0] - baseline[0]
             dy = current_centroid[1] - baseline[1]
-            moving_in = dx > 0 if abs(dx) > abs(dy) else dy > 0  # moving right or downward
+            moving_in = dx > 0 if abs(dx) > abs(dy) else dy > 0
             if moving_in:
                 self.in_count += 1
-                self.classwise_count[self.names[cls]]["IN"] += 1
-            else:  # Moving left or upward
+                self.classwise_count[self.names[cls]]['IN'] += 1
+            else:
                 self.out_count += 1
-                self.classwise_count[self.names[cls]]["OUT"] += 1
+                self.classwise_count[self.names[cls]]['OUT'] += 1
             self.counted_ids.add(track_id)
 
-    def forget_tracks(self, track_ids: list[int]) -> None:
+    def forget_tracks(self, track_ids):
         """Drop retired IDs from `counted_ids` so it doesn't grow across a 24/7 stream (see BaseSolution)."""
         super().forget_tracks(track_ids)
         self.counted_ids.difference_update(track_ids)
 
-    def display_counts(self, plot_im) -> None:
+    def display_counts(self, plot_im):
         """Display object counts on the input image or frame.
 
         Args:
@@ -140,16 +109,11 @@ class ObjectCounter(BaseSolution):
             >>> frame = cv2.imread("image.jpg")
             >>> counter.display_counts(frame)
         """
-        labels_dict = {
-            str.capitalize(key): f"{'IN ' + str(value['IN']) if self.show_in else ''} "
-            f"{'OUT ' + str(value['OUT']) if self.show_out else ''}".strip()
-            for key, value in self.classwise_count.items()
-            if (value["IN"] != 0 and self.show_in) or (value["OUT"] != 0 and self.show_out)
-        }
+        labels_dict = {str.capitalize(key): f"{('IN ' + str(value['IN']) if self.show_in else '')} {('OUT ' + str(value['OUT']) if self.show_out else '')}".strip() for (key, value) in self.classwise_count.items() if value['IN'] != 0 and self.show_in or (value['OUT'] != 0 and self.show_out)}
         if labels_dict:
             self.annotator.display_analytics(plot_im, labels_dict, (104, 31, 17), (255, 255, 255), self.margin)
 
-    def process(self, im0) -> SolutionResults:
+    def process(self, im0):
         """Process input data (frames or object tracks) and update object counts.
 
         This method initializes the counting region, extracts tracks, draws bounding boxes and regions, updates object
@@ -171,35 +135,17 @@ class ObjectCounter(BaseSolution):
         if not self.region_initialized:
             self.initialize_region()
             self.region_initialized = True
-
-        self.extract_tracks(im0)  # Extract tracks
-        self.annotator = SolutionAnnotator(im0, line_width=self.line_width)  # Initialize annotator
-
-        self.annotator.draw_region(
-            reg_pts=self.region, color=(104, 0, 123), thickness=self.line_width * 2
-        )  # Draw region
-
-        # Iterate over bounding boxes, track ids and classes index
-        for box, track_id, cls, conf in zip(self.boxes, self.track_ids, self.clss, self.confs):
-            # Draw bounding box and counting region
+        self.extract_tracks(im0)
+        self.annotator = SolutionAnnotator(im0, line_width=self.line_width)
+        self.annotator.draw_region(reg_pts=self.region, color=(104, 0, 123), thickness=self.line_width * 2)
+        for (box, track_id, cls, conf) in zip(self.boxes, self.track_ids, self.clss, self.confs):
             self.annotator.box_label(box, label=self.adjust_box_label(cls, conf, track_id), color=colors(cls, True))
-            self.store_tracking_history(track_id, box)  # Store track history
-
-            # Store previous position of track for object counting
+            self.store_tracking_history(track_id, box)
             prev_position = None
             if len(self.track_history[track_id]) > 1:
                 prev_position = self.track_history[track_id][-2]
-            self.count_objects(self.track_history[track_id][-1], track_id, prev_position, cls)  # object counting
-
+            self.count_objects(self.track_history[track_id][-1], track_id, prev_position, cls)
         plot_im = self.annotator.result()
-        self.display_counts(plot_im)  # Display the counts on the frame
-        self.display_output(plot_im)  # Display output with base class function
-
-        # Return SolutionResults
-        return SolutionResults(
-            plot_im=plot_im,
-            in_count=self.in_count,
-            out_count=self.out_count,
-            classwise_count=dict(self.classwise_count),
-            total_tracks=len(self.track_ids),
-        )
+        self.display_counts(plot_im)
+        self.display_output(plot_im)
+        return SolutionResults(plot_im=plot_im, in_count=self.in_count, out_count=self.out_count, classwise_count=dict(self.classwise_count), total_tracks=len(self.track_ids))

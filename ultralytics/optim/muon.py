@@ -1,12 +1,7 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 import torch
 from torch import optim
 
-
-def zeropower_via_newtonschulz5(G: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
+def zeropower_via_newtonschulz5(G, eps=1e-07):
     """Compute the zeroth power / orthogonalization of matrix G using Newton-Schulz iteration.
 
     This function implements a quintic Newton-Schulz iteration to compute an approximate orthogonalization of the input
@@ -36,25 +31,19 @@ def zeropower_via_newtonschulz5(G: torch.Tensor, eps: float = 1e-7) -> torch.Ten
     """
     assert G.ndim in {2, 3}
     X = G.reshape(-1, G.size(-2), G.size(-1)).bfloat16()
-    X /= X.norm(dim=(-2, -1), keepdim=True) + eps  # ensure top singular value <= 1
+    X /= X.norm(dim=(-2, -1), keepdim=True) + eps
     if G.size(-2) > G.size(-1):
         X = X.transpose(-2, -1)
-    a, b, c = 3.4445, -4.7750, 2.0315
+    (a, b, c) = (3.4445, -4.775, 2.0315)
     for _ in range(5):
         A = X @ X.transpose(-2, -1)
-        B = torch.baddbmm(A, A, A, beta=b, alpha=c)  # b * A + c * A @ A
-        X = torch.baddbmm(X, B, X, beta=a)  # a * X + B @ X
+        B = torch.baddbmm(A, A, A, beta=b, alpha=c)
+        X = torch.baddbmm(X, B, X, beta=a)
     if G.size(-2) > G.size(-1):
         X = X.transpose(-2, -1)
     return X.reshape(G.shape)
 
-
-def muon_update(
-    grad: torch.Tensor | list[torch.Tensor],
-    momentum: torch.Tensor | list[torch.Tensor],
-    beta: float = 0.95,
-    nesterov: bool = True,
-) -> torch.Tensor | list[torch.Tensor]:
+def muon_update(grad, momentum, beta=0.95, nesterov=True):
     """Compute Muon optimizer updates with momentum and orthogonalization.
 
     This function applies momentum to the gradients, optionally uses Nesterov acceleration, and then orthogonalizes the
@@ -86,7 +75,7 @@ def muon_update(
         - Final updates are scaled by sqrt(max(1, dim[-2] / dim[-1])) to account for parameter dimensions.
     """
     single = isinstance(grad, torch.Tensor)
-    grads, momentums = ([grad], [momentum]) if single else (grad, momentum)
+    (grads, momentums) = ([grad], [momentum]) if single else (grad, momentum)
     torch._foreach_mul_(momentums, beta)
     torch._foreach_add_(momentums, grads, alpha=1 - beta)
     if nesterov:
@@ -94,37 +83,29 @@ def muon_update(
         torch._foreach_add_(updates, grads, alpha=1 - beta)
     else:
         updates = list(momentums)
-    buckets = {}  # group matrices by (columns, scale) for batched orthogonalization
-    for i, u in enumerate(updates):
-        # flatten in the update's own memory order, a view for NCHW and NHWC alike: permuting columns permutes
-        # the orthogonalized columns identically, and the write-back below restores the update's layout. Any
-        # other layout is materialized row-major and written back row-major.
+    buckets = {}
+    for (i, u) in enumerate(updates):
         dense = u.is_contiguous()
         nhwc = not dense and u.ndim == 4 and u.is_contiguous(memory_format=torch.channels_last)
-        m = u.permute(0, 2, 3, 1).flatten(1) if nhwc else (u.flatten(1) if u.ndim > 2 else u.contiguous())
+        m = u.permute(0, 2, 3, 1).flatten(1) if nhwc else u.flatten(1) if u.ndim > 2 else u.contiguous()
         scale = max(1, grads[i].size(-2) / grads[i].size(-1)) ** 0.5
-        buckets.setdefault((m.size(1), scale, m.device, m.dtype), []).append(
-            (i, m, u.stride() if dense or nhwc else None)
-        )
-    groups = []  # split each bucket until its row counts span at most 16x, bounding the padding below
-    for key, items in buckets.items():
+        buckets.setdefault((m.size(1), scale, m.device, m.dtype), []).append((i, m, u.stride() if dense or nhwc else None))
+    groups = []
+    for (key, items) in buckets.items():
         items.sort(key=lambda t: -t[1].size(0))
         start = 0
         for j in range(1, len(items) + 1):
             if j == len(items) or items[start][1].size(0) > 16 * items[j][1].size(0):
                 groups.append((key, items[start:j]))
                 start = j
-    for (cols, scale, device, dtype), items in groups:
-        # zero-pad rows, not columns, so that different shapes share one batched call (zeros stay zero through
-        # Newton-Schulz) while the fill below and every write-back below stay contiguous
+    for ((cols, scale, device, dtype), items) in groups:
         X = torch.zeros(len(items), items[0][1].size(0), cols, device=device, dtype=dtype)
-        torch._foreach_add_([X[j, : m.size(0)] for j, (_, m, _) in enumerate(items)], [m for _, m, _ in items])
+        torch._foreach_add_([X[j, :m.size(0)] for (j, (_, m, _)) in enumerate(items)], [m for (_, m, _) in items])
         X = zeropower_via_newtonschulz5(X).contiguous().to(grads[items[0][0]].dtype).mul_(scale)
-        for j, (i, m, stride) in enumerate(items):
-            x = X[j, : m.size(0)]
+        for (j, (i, m, stride)) in enumerate(items):
+            x = X[j, :m.size(0)]
             updates[i] = x.as_strided(grads[i].shape, stride) if stride else x.reshape(grads[i].shape)
     return updates[0] if single else updates
-
 
 class MuSGD(optim.Optimizer):
     """Hybrid optimizer combining Muon and SGD updates for neural network training.
@@ -172,17 +153,7 @@ class MuSGD(optim.Optimizer):
         - The Muon update uses orthogonalization which works best for 2D+ parameter tensors.
     """
 
-    def __init__(
-        self,
-        params,
-        lr: float = 1e-3,
-        momentum: float = 0.0,
-        weight_decay: float = 0.0,
-        nesterov: bool = False,
-        use_muon: bool = False,
-        muon: float = 0.5,
-        sgd: float = 0.5,
-    ):
+    def __init__(self, params, lr=0.001, momentum=0.0, weight_decay=0.0, nesterov=False, use_muon=False, muon=0.5, sgd=0.5):
         """Initialize MuSGD optimizer with hybrid Muon and SGD capabilities.
 
         Args:
@@ -195,13 +166,7 @@ class MuSGD(optim.Optimizer):
             muon (float): Scaling factor for Muon component.
             sgd (float): Scaling factor for SGD component.
         """
-        defaults = {
-            "lr": lr,
-            "momentum": momentum,
-            "weight_decay": weight_decay,
-            "nesterov": nesterov,
-            "use_muon": use_muon,
-        }
+        defaults = {'lr': lr, 'momentum': momentum, 'weight_decay': weight_decay, 'nesterov': nesterov, 'use_muon': use_muon}
         super().__init__(params, defaults)
         self.muon = muon
         self.sgd = sgd
@@ -230,33 +195,26 @@ class MuSGD(optim.Optimizer):
         if closure is not None:
             with torch.enable_grad():
                 loss = closure()
-
         for group in self.param_groups:
-            params = [p for p in group["params"] if p.grad is not None]
+            params = [p for p in group['params'] if p.grad is not None]
             if not params:
                 continue
-            lr, momentum, nesterov = group["lr"], group["momentum"], group["nesterov"]
+            (lr, momentum, nesterov) = (group['lr'], group['momentum'], group['nesterov'])
             for p in params:
                 if len(self.state[p]) == 0:
-                    self.state[p]["momentum_buffer"] = torch.zeros_like(p)
-                    if group["use_muon"]:
-                        self.state[p]["momentum_buffer_SGD"] = torch.zeros_like(p)
-            if group["use_muon"]:
-                updates = muon_update(
-                    [p.grad for p in params],
-                    [self.state[p]["momentum_buffer"] for p in params],
-                    beta=momentum,
-                    nesterov=nesterov,
-                )
+                    self.state[p]['momentum_buffer'] = torch.zeros_like(p)
+                    if group['use_muon']:
+                        self.state[p]['momentum_buffer_SGD'] = torch.zeros_like(p)
+            if group['use_muon']:
+                updates = muon_update([p.grad for p in params], [self.state[p]['momentum_buffer'] for p in params], beta=momentum, nesterov=nesterov)
                 torch._foreach_add_(params, updates, alpha=-(lr * self.muon))
-                buffers = [self.state[p]["momentum_buffer_SGD"] for p in params]
+                buffers = [self.state[p]['momentum_buffer_SGD'] for p in params]
                 lr *= self.sgd
             else:
-                buffers = [self.state[p]["momentum_buffer"] for p in params]
-            # SGD update
+                buffers = [self.state[p]['momentum_buffer'] for p in params]
             grads = [p.grad for p in params]
-            if group["weight_decay"] != 0:
-                grads = torch._foreach_add(grads, params, alpha=group["weight_decay"])
+            if group['weight_decay'] != 0:
+                grads = torch._foreach_add(grads, params, alpha=group['weight_decay'])
             torch._foreach_mul_(buffers, momentum)
             torch._foreach_add_(buffers, grads)
             updates = torch._foreach_add(grads, buffers, alpha=momentum) if nesterov else buffers

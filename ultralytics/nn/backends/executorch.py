@@ -1,16 +1,8 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
-
 import torch
-
 from ultralytics.utils import LOGGER
 from ultralytics.utils.checks import check_executorch_requirements
-
 from .base import BaseBackend
-
 
 class ExecuTorchBackend(BaseBackend):
     """Meta ExecuTorch inference backend for on-device deployment.
@@ -19,23 +11,21 @@ class ExecuTorchBackend(BaseBackend):
     standalone .pte files and directory-based model packages with metadata.
     """
 
-    def load_model(self, weight: str | Path) -> None:
+    def load_model(self, weight):
         """Load an ExecuTorch model from a .pte file or directory.
 
         Args:
             weight (str | Path): Path to the .pte model file or directory containing the model.
         """
-        LOGGER.info(f"Loading {weight} for ExecuTorch inference...")
+        LOGGER.info(f'Loading {weight} for ExecuTorch inference...')
         check_executorch_requirements()
-
         from executorch.runtime import Runtime
-
         w = Path(weight)
-        program = Runtime.get().load_program(str(next(w.rglob("*.pte")) if w.is_dir() else w))
-        self.model = program.load_method("forward")
+        program = Runtime.get().load_program(str(next(w.rglob('*.pte')) if w.is_dir() else w))
+        self.model = program.load_method('forward')
         self.apply_metadata(self.read_metadata(w))
 
-    def forward(self, im: torch.Tensor) -> list:
+    def forward(self, im):
         """Run inference using the ExecuTorch runtime.
 
         Args:

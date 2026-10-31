@@ -1,9 +1,4 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 import numpy as np
-
 
 class KalmanFilterXYAH:
     """A KalmanFilterXYAH class for tracking bounding boxes in image space using a Kalman filter.
@@ -42,19 +37,15 @@ class KalmanFilterXYAH:
         velocities are (vx, vy, va, vh). The filter uses a constant velocity model for object motion and a linear
         observation model for bounding box location.
         """
-        ndim, dt = 4, 1.0
-
-        # Create Kalman filter model matrices
+        (ndim, dt) = (4, 1.0)
         self._motion_mat = np.eye(2 * ndim, 2 * ndim)
         for i in range(ndim):
             self._motion_mat[i, ndim + i] = dt
         self._update_mat = np.eye(ndim, 2 * ndim)
-
-        # Motion and observation uncertainty are chosen relative to the current state estimate
         self._std_weight_position = 1.0 / 20
         self._std_weight_velocity = 1.0 / 160
 
-    def initiate(self, measurement: np.ndarray):
+    def initiate(self, measurement):
         """Create a track from an unassociated measurement.
 
         Args:
@@ -74,21 +65,11 @@ class KalmanFilterXYAH:
         mean_pos = measurement
         mean_vel = np.zeros_like(mean_pos)
         mean = np.r_[mean_pos, mean_vel]
-
-        std = [
-            2 * self._std_weight_position * measurement[3],
-            2 * self._std_weight_position * measurement[3],
-            1e-2,
-            2 * self._std_weight_position * measurement[3],
-            10 * self._std_weight_velocity * measurement[3],
-            10 * self._std_weight_velocity * measurement[3],
-            1e-5,
-            10 * self._std_weight_velocity * measurement[3],
-        ]
+        std = [2 * self._std_weight_position * measurement[3], 2 * self._std_weight_position * measurement[3], 0.01, 2 * self._std_weight_position * measurement[3], 10 * self._std_weight_velocity * measurement[3], 10 * self._std_weight_velocity * measurement[3], 1e-05, 10 * self._std_weight_velocity * measurement[3]]
         covariance = np.diag(np.square(std))
-        return mean, covariance
+        return (mean, covariance)
 
-    def predict(self, mean: np.ndarray, covariance: np.ndarray):
+    def predict(self, mean, covariance):
         """Run Kalman filter prediction step.
 
         Args:
@@ -106,26 +87,14 @@ class KalmanFilterXYAH:
             >>> covariance = np.eye(8)
             >>> predicted_mean, predicted_covariance = kf.predict(mean, covariance)
         """
-        std_pos = [
-            self._std_weight_position * mean[3],
-            self._std_weight_position * mean[3],
-            1e-2,
-            self._std_weight_position * mean[3],
-        ]
-        std_vel = [
-            self._std_weight_velocity * mean[3],
-            self._std_weight_velocity * mean[3],
-            1e-5,
-            self._std_weight_velocity * mean[3],
-        ]
+        std_pos = [self._std_weight_position * mean[3], self._std_weight_position * mean[3], 0.01, self._std_weight_position * mean[3]]
+        std_vel = [self._std_weight_velocity * mean[3], self._std_weight_velocity * mean[3], 1e-05, self._std_weight_velocity * mean[3]]
         motion_cov = np.diag(np.square(np.r_[std_pos, std_vel]))
-
         mean = np.dot(mean, self._motion_mat.T)
         covariance = np.linalg.multi_dot((self._motion_mat, covariance, self._motion_mat.T)) + motion_cov
+        return (mean, covariance)
 
-        return mean, covariance
-
-    def project(self, mean: np.ndarray, covariance: np.ndarray, confidence: float | None = None):
+    def project(self, mean, covariance, confidence=None):
         """Project state distribution to measurement space.
 
         Args:
@@ -144,21 +113,15 @@ class KalmanFilterXYAH:
             >>> covariance = np.eye(8)
             >>> projected_mean, projected_covariance = kf.project(mean, covariance)
         """
-        std = [
-            self._std_weight_position * mean[3],
-            self._std_weight_position * mean[3],
-            1e-1,
-            self._std_weight_position * mean[3],
-        ]
+        std = [self._std_weight_position * mean[3], self._std_weight_position * mean[3], 0.1, self._std_weight_position * mean[3]]
         innovation_cov = np.diag(np.square(std))
-        if confidence is not None:  # NSA-Kalman: scale measurement noise by detection confidence (StrongSORT)
+        if confidence is not None:
             innovation_cov *= max(1.0 - float(confidence), 0.05)
-
         mean = mean[:4].copy()
         covariance = covariance[:4, :4]
-        return mean, covariance + innovation_cov
+        return (mean, covariance + innovation_cov)
 
-    def multi_predict(self, mean: np.ndarray, covariance: np.ndarray):
+    def multi_predict(self, mean, covariance):
         """Run Kalman filter prediction step for multiple object states (Vectorized version).
 
         Args:
@@ -175,32 +138,17 @@ class KalmanFilterXYAH:
             >>> covariance = np.random.rand(10, 8, 8)  # Covariance matrices for 10 object states
             >>> predicted_mean, predicted_covariance = kf.multi_predict(mean, covariance)
         """
-        std_pos = [
-            self._std_weight_position * mean[:, 3],
-            self._std_weight_position * mean[:, 3],
-            1e-2 * np.ones_like(mean[:, 3]),
-            self._std_weight_position * mean[:, 3],
-        ]
-        std_vel = [
-            self._std_weight_velocity * mean[:, 3],
-            self._std_weight_velocity * mean[:, 3],
-            1e-5 * np.ones_like(mean[:, 3]),
-            self._std_weight_velocity * mean[:, 3],
-        ]
+        std_pos = [self._std_weight_position * mean[:, 3], self._std_weight_position * mean[:, 3], 0.01 * np.ones_like(mean[:, 3]), self._std_weight_position * mean[:, 3]]
+        std_vel = [self._std_weight_velocity * mean[:, 3], self._std_weight_velocity * mean[:, 3], 1e-05 * np.ones_like(mean[:, 3]), self._std_weight_velocity * mean[:, 3]]
         sqr = np.square(np.r_[std_pos, std_vel]).T
-
         motion_cov = np.zeros((sqr.shape[0], 8, 8))
         motion_cov[:, range(8), range(8)] = sqr
-
         mean = np.dot(mean, self._motion_mat.T)
         left = np.dot(self._motion_mat, covariance).transpose((1, 0, 2))
         covariance = np.dot(left, self._motion_mat.T) + motion_cov
+        return (mean, covariance)
 
-        return mean, covariance
-
-    def update(
-        self, mean: np.ndarray, covariance: np.ndarray, measurement: np.ndarray, confidence: float | None = None
-    ):
+    def update(self, mean, covariance, measurement, confidence=None):
         """Run Kalman filter correction step.
 
         Args:
@@ -222,23 +170,14 @@ class KalmanFilterXYAH:
             >>> measurement = np.array([1, 1, 1, 1])
             >>> new_mean, new_covariance = kf.update(mean, covariance, measurement)
         """
-        projected_mean, projected_cov = self.project(mean, covariance, confidence)
-
+        (projected_mean, projected_cov) = self.project(mean, covariance, confidence)
         kalman_gain = np.linalg.solve(projected_cov, covariance[:, :4].T).T
         innovation = measurement - projected_mean
-
         new_mean = mean + np.dot(innovation, kalman_gain.T)
         new_covariance = covariance - np.linalg.multi_dot((kalman_gain, projected_cov, kalman_gain.T))
-        return new_mean, new_covariance
+        return (new_mean, new_covariance)
 
-    def gating_distance(
-        self,
-        mean: np.ndarray,
-        covariance: np.ndarray,
-        measurements: np.ndarray,
-        only_position: bool = False,
-        metric: str = "maha",
-    ) -> np.ndarray:
+    def gating_distance(self, mean, covariance, measurements, only_position=False, metric='maha'):
         """Compute gating distance between state distribution and measurements.
 
         A suitable threshold for the returned squared Mahalanobis distance is the 95th-percentile chi-square value:
@@ -267,21 +206,19 @@ class KalmanFilterXYAH:
             >>> measurements = np.array([[1, 1, 1, 1], [2, 2, 1, 1]])
             >>> distances = kf.gating_distance(mean, covariance, measurements, only_position=False, metric="maha")
         """
-        mean, covariance = self.project(mean, covariance)
+        (mean, covariance) = self.project(mean, covariance)
         if only_position:
-            mean, covariance = mean[:2], covariance[:2, :2]
+            (mean, covariance) = (mean[:2], covariance[:2, :2])
             measurements = measurements[:, :2]
-
         d = measurements - mean
-        if metric == "gaussian":
+        if metric == 'gaussian':
             return np.sum(d * d, axis=1)
-        elif metric == "maha":
+        elif metric == 'maha':
             cholesky_factor = np.linalg.cholesky(covariance)
             z = np.linalg.solve(cholesky_factor, d.T)
-            return np.sum(z * z, axis=0)  # square maha
+            return np.sum(z * z, axis=0)
         else:
-            raise ValueError("Invalid distance metric")
-
+            raise ValueError('Invalid distance metric')
 
 class KalmanFilterXYWH(KalmanFilterXYAH):
     """A KalmanFilterXYWH class for tracking bounding boxes in image space using a Kalman filter.
@@ -311,7 +248,7 @@ class KalmanFilterXYWH(KalmanFilterXYAH):
         >>> mean, covariance = kf.initiate(measurement)
     """
 
-    def initiate(self, measurement: np.ndarray):
+    def initiate(self, measurement):
         """Create track from unassociated measurement.
 
         Args:
@@ -331,21 +268,11 @@ class KalmanFilterXYWH(KalmanFilterXYAH):
         mean_pos = measurement
         mean_vel = np.zeros_like(mean_pos)
         mean = np.r_[mean_pos, mean_vel]
-
-        std = [
-            2 * self._std_weight_position * measurement[2],
-            2 * self._std_weight_position * measurement[3],
-            2 * self._std_weight_position * measurement[2],
-            2 * self._std_weight_position * measurement[3],
-            10 * self._std_weight_velocity * measurement[2],
-            10 * self._std_weight_velocity * measurement[3],
-            10 * self._std_weight_velocity * measurement[2],
-            10 * self._std_weight_velocity * measurement[3],
-        ]
+        std = [2 * self._std_weight_position * measurement[2], 2 * self._std_weight_position * measurement[3], 2 * self._std_weight_position * measurement[2], 2 * self._std_weight_position * measurement[3], 10 * self._std_weight_velocity * measurement[2], 10 * self._std_weight_velocity * measurement[3], 10 * self._std_weight_velocity * measurement[2], 10 * self._std_weight_velocity * measurement[3]]
         covariance = np.diag(np.square(std))
-        return mean, covariance
+        return (mean, covariance)
 
-    def predict(self, mean: np.ndarray, covariance: np.ndarray):
+    def predict(self, mean, covariance):
         """Run Kalman filter prediction step.
 
         Args:
@@ -363,26 +290,14 @@ class KalmanFilterXYWH(KalmanFilterXYAH):
             >>> covariance = np.eye(8)
             >>> predicted_mean, predicted_covariance = kf.predict(mean, covariance)
         """
-        std_pos = [
-            self._std_weight_position * mean[2],
-            self._std_weight_position * mean[3],
-            self._std_weight_position * mean[2],
-            self._std_weight_position * mean[3],
-        ]
-        std_vel = [
-            self._std_weight_velocity * mean[2],
-            self._std_weight_velocity * mean[3],
-            self._std_weight_velocity * mean[2],
-            self._std_weight_velocity * mean[3],
-        ]
+        std_pos = [self._std_weight_position * mean[2], self._std_weight_position * mean[3], self._std_weight_position * mean[2], self._std_weight_position * mean[3]]
+        std_vel = [self._std_weight_velocity * mean[2], self._std_weight_velocity * mean[3], self._std_weight_velocity * mean[2], self._std_weight_velocity * mean[3]]
         motion_cov = np.diag(np.square(np.r_[std_pos, std_vel]))
-
         mean = np.dot(mean, self._motion_mat.T)
         covariance = np.linalg.multi_dot((self._motion_mat, covariance, self._motion_mat.T)) + motion_cov
+        return (mean, covariance)
 
-        return mean, covariance
-
-    def project(self, mean: np.ndarray, covariance: np.ndarray, confidence: float | None = None):
+    def project(self, mean, covariance, confidence=None):
         """Project state distribution to measurement space.
 
         Args:
@@ -401,21 +316,15 @@ class KalmanFilterXYWH(KalmanFilterXYAH):
             >>> covariance = np.eye(8)
             >>> projected_mean, projected_cov = kf.project(mean, covariance)
         """
-        std = [
-            self._std_weight_position * mean[2],
-            self._std_weight_position * mean[3],
-            self._std_weight_position * mean[2],
-            self._std_weight_position * mean[3],
-        ]
+        std = [self._std_weight_position * mean[2], self._std_weight_position * mean[3], self._std_weight_position * mean[2], self._std_weight_position * mean[3]]
         innovation_cov = np.diag(np.square(std))
-        if confidence is not None:  # NSA-Kalman: scale measurement noise by detection confidence (StrongSORT)
+        if confidence is not None:
             innovation_cov *= max(1.0 - float(confidence), 0.05)
-
         mean = mean[:4].copy()
         covariance = covariance[:4, :4]
-        return mean, covariance + innovation_cov
+        return (mean, covariance + innovation_cov)
 
-    def multi_predict(self, mean: np.ndarray, covariance: np.ndarray):
+    def multi_predict(self, mean, covariance):
         """Run Kalman filter prediction step (Vectorized version).
 
         Args:
@@ -432,32 +341,17 @@ class KalmanFilterXYWH(KalmanFilterXYAH):
             >>> kf = KalmanFilterXYWH()
             >>> predicted_mean, predicted_covariance = kf.multi_predict(mean, covariance)
         """
-        std_pos = [
-            self._std_weight_position * mean[:, 2],
-            self._std_weight_position * mean[:, 3],
-            self._std_weight_position * mean[:, 2],
-            self._std_weight_position * mean[:, 3],
-        ]
-        std_vel = [
-            self._std_weight_velocity * mean[:, 2],
-            self._std_weight_velocity * mean[:, 3],
-            self._std_weight_velocity * mean[:, 2],
-            self._std_weight_velocity * mean[:, 3],
-        ]
+        std_pos = [self._std_weight_position * mean[:, 2], self._std_weight_position * mean[:, 3], self._std_weight_position * mean[:, 2], self._std_weight_position * mean[:, 3]]
+        std_vel = [self._std_weight_velocity * mean[:, 2], self._std_weight_velocity * mean[:, 3], self._std_weight_velocity * mean[:, 2], self._std_weight_velocity * mean[:, 3]]
         sqr = np.square(np.r_[std_pos, std_vel]).T
-
         motion_cov = np.zeros((sqr.shape[0], 8, 8))
         motion_cov[:, range(8), range(8)] = sqr
-
         mean = np.dot(mean, self._motion_mat.T)
         left = np.dot(self._motion_mat, covariance).transpose((1, 0, 2))
         covariance = np.dot(left, self._motion_mat.T) + motion_cov
+        return (mean, covariance)
 
-        return mean, covariance
-
-    def update(
-        self, mean: np.ndarray, covariance: np.ndarray, measurement: np.ndarray, confidence: float | None = None
-    ):
+    def update(self, mean, covariance, measurement, confidence=None):
         """Run Kalman filter correction step.
 
         Args:

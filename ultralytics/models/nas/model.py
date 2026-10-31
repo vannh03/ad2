@@ -1,21 +1,13 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
-
 import torch
-
 from ultralytics.engine.model import Model
 from ultralytics.utils import DEFAULT_CFG_DICT
 from ultralytics.utils.downloads import attempt_download_asset
 from ultralytics.utils.patches import torch_load
 from ultralytics.utils.torch_utils import model_info
-
 from .predict import NASPredictor
 from .val import NASValidator
-
 
 class NAS(Model):
     """YOLO-NAS model for object detection.
@@ -41,12 +33,12 @@ class NAS(Model):
         YOLO-NAS models only support pre-trained models. Do not provide YAML configuration files.
     """
 
-    def __init__(self, model: str = "yolo_nas_s.pt") -> None:
+    def __init__(self, model='yolo_nas_s.pt'):
         """Initialize the NAS model with the provided or default model."""
-        assert Path(model).suffix not in {".yaml", ".yml"}, "YOLO-NAS models only support pre-trained models."
-        super().__init__(model, task="detect")
+        assert Path(model).suffix not in {'.yaml', '.yml'}, 'YOLO-NAS models only support pre-trained models.'
+        super().__init__(model, task='detect')
 
-    def _load(self, weights: str, task=None) -> None:
+    def _load(self, weights, task=None):
         """Load an existing NAS model weights or create a new NAS model with pretrained weights.
 
         Args:
@@ -54,25 +46,22 @@ class NAS(Model):
             task (str, optional): Task type for the model.
         """
         import super_gradients
-
         suffix = Path(weights).suffix
-        if suffix == ".pt":
+        if suffix == '.pt':
             self.model = torch_load(attempt_download_asset(weights))
-        elif suffix == "":
-            self.model = super_gradients.training.models.get(weights, pretrained_weights="coco")
-
-        # Standardize model attributes for compatibility
+        elif suffix == '':
+            self.model = super_gradients.training.models.get(weights, pretrained_weights='coco')
         self.model.fuse = lambda verbose=True, imgsz=640: self.model
         self.model.stride = torch.tensor([32])
         self.model.names = dict(enumerate(self.model._class_names))
-        self.model.is_fused = lambda: False  # for info()
-        self.model.yaml = {}  # for info()
-        self.model.pt_path = str(weights)  # for export()
-        self.model.task = "detect"  # for export()
-        self.model.args = {**DEFAULT_CFG_DICT, **self.overrides}  # for export()
+        self.model.is_fused = lambda : False
+        self.model.yaml = {}
+        self.model.pt_path = str(weights)
+        self.model.task = 'detect'
+        self.model.args = {**DEFAULT_CFG_DICT, **self.overrides}
         self.model.eval()
 
-    def info(self, detailed: bool = False, verbose: bool = True) -> tuple:
+    def info(self, detailed=False, verbose=True):
         """Log model information.
 
         Args:
@@ -85,6 +74,6 @@ class NAS(Model):
         return model_info(self.model, detailed=detailed, verbose=verbose, imgsz=640)
 
     @property
-    def task_map(self) -> dict[str, dict[str, Any]]:
+    def task_map(self):
         """Return a dictionary mapping tasks to respective predictor and validator classes."""
-        return {"detect": {"predictor": NASPredictor, "validator": NASValidator}}
+        return {'detect': {'predictor': NASPredictor, 'validator': NASValidator}}

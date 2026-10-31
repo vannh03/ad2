@@ -1,5 +1,3 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 import json
 import logging
 import plistlib
@@ -10,9 +8,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-
 from ultralytics.utils import LINUX, LOGGER, MACOS, RANK, WINDOWS
-
 
 class ConsoleLogger:
     """Console output capture with batched streaming to file, API, or custom callback.
@@ -53,34 +49,26 @@ class ConsoleLogger:
             flush_interval (float): Max seconds between flushes when batching.
             on_flush (callable | None): Callback(content: str, line_count: int, chunk_id: int) for custom handling.
         """
-        if isinstance(destination, str) and destination.startswith("http://"):
-            LOGGER.warning("ConsoleLogger destination uses plaintext HTTP; captured logs are sent unencrypted.")
+        if isinstance(destination, str) and destination.startswith('http://'):
+            LOGGER.warning('ConsoleLogger destination uses plaintext HTTP; captured logs are sent unencrypted.')
         self.destination = destination
-        self.is_api = isinstance(destination, str) and destination.startswith(("http://", "https://"))
-        if destination is not None and not self.is_api:
+        self.is_api = isinstance(destination, str) and destination.startswith(('http://', 'https://'))
+        if destination is not None and (not self.is_api):
             self.destination = Path(destination)
-
-        # Batching configuration
         self.batch_size = max(1, batch_size)
         self.flush_interval = flush_interval
         self.on_flush = on_flush
-
-        # Console capture state
         self.original_stdout = sys.stdout
         self.original_stderr = sys.stderr
         self.active = False
-        self._log_handler = None  # Track handler for cleanup
-
-        # Buffer for batching
+        self._log_handler = None
         self.buffer = []
         self.buffer_lock = threading.Lock()
         self.flush_thread = None
         self.chunk_id = 0
-
-        # Deduplication state
-        self.last_line = ""
+        self.last_line = ''
         self.last_time = 0.0
-        self.progress = {}  # live progress bar frames by bar id, held as state instead of buffered as log lines
+        self.progress = {}
         self.progress_sent = {}
 
     def start_capture(self):
@@ -91,20 +79,15 @@ class ConsoleLogger:
         """
         if self.active or RANK not in {-1, 0}:
             return
-
         self.active = True
         self.stdout_capture = sys.stdout = self._ConsoleCapture(self.original_stdout, self._queue_log)
         self.stderr_capture = sys.stderr = self._ConsoleCapture(self.original_stderr, self._queue_log)
-
-        # Hook Ultralytics logger
         try:
             self._log_handler = self._LogHandler(self._queue_log)
-            logging.getLogger("ultralytics").addHandler(self._log_handler)
+            logging.getLogger('ultralytics').addHandler(self._log_handler)
         except Exception:
             pass
-
-        # Background flush thread: carries live progress frames in every mode, batched lines when batching
-        if not (self.flush_thread and self.flush_thread.is_alive()):  # a worker still sleeping resumes on its own
+        if not (self.flush_thread and self.flush_thread.is_alive()):
             self.flush_thread = threading.Thread(target=self._flush_worker, daemon=True)
             self.flush_thread.start()
 
@@ -112,21 +95,16 @@ class ConsoleLogger:
         """Stop capturing console output and flush remaining buffer."""
         if not self.active:
             return
-
         self.stdout_capture.callback = self.stderr_capture.callback = None
         self.active = False
         sys.stdout = self.original_stdout
         sys.stderr = self.original_stderr
-
-        # Remove logging handler to prevent memory leak
         if self._log_handler:
             try:
-                logging.getLogger("ultralytics").removeHandler(self._log_handler)
+                logging.getLogger('ultralytics').removeHandler(self._log_handler)
             except Exception:
                 pass
             self._log_handler = None
-
-        # Final flush, without the frames of any bar that outlived the capture
         self.progress.clear()
         self._flush_buffer()
 
@@ -134,50 +112,35 @@ class ConsoleLogger:
         """Queue console text with deduplication and timestamp processing, holding bar frames as state."""
         if not self.active:
             return
-
         current_time = time.time()
-
-        # Handle carriage returns and strip ANSI clear-line codes (TQDM writes "\r\033[K<line>" interactively)
-        if "\r" in text:
-            text = text.split("\r")[-1]
-        text = text.replace("\x1b[K", "")
-
-        if bar_id is not None:  # a redraw is bar state, so only the frame a bar closed with becomes a log line
+        if '\r' in text:
+            text = text.split('\r')[-1]
+        text = text.replace('\x1b[K', '')
+        if bar_id is not None:
             with self.buffer_lock:
                 if text:
                     self.progress[str(bar_id)] = text.rstrip()
                     return
-                text = self.progress.pop(str(bar_id), "")
-
-        lines = text.split("\n")
-        if lines and lines[-1] == "":
+                text = self.progress.pop(str(bar_id), '')
+        lines = text.split('\n')
+        if lines and lines[-1] == '':
             lines.pop()
-
         for line in lines:
             line = line.rstrip()
             if not line:
-                continue  # a bare newline carries nothing once timestamped
-
-            # General deduplication
+                continue
             if line == self.last_line and current_time - self.last_time < 0.1:
                 continue
-
             self.last_line = line
             self.last_time = current_time
-
-            # Add timestamp if needed
-            if not line.startswith("[20"):
-                timestamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-                line = f"[{timestamp}] {line}"
-
-            # Add to buffer and check if flush needed
+            if not line.startswith('[20'):
+                timestamp = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')
+                line = f'[{timestamp}] {line}'
             should_flush = False
             with self.buffer_lock:
                 self.buffer.append(line)
                 if len(self.buffer) >= self.batch_size:
                     should_flush = True
-
-            # Flush outside lock to avoid deadlock
             if should_flush:
                 self._flush_buffer()
 
@@ -192,24 +155,19 @@ class ConsoleLogger:
         """Flush buffered lines and current progress bar frames to destination and/or callback."""
         with self.buffer_lock:
             if not self.buffer and self.progress == self.progress_sent:
-                return  # nothing new: an idle bar must not flush a chunk of its own
+                return
             lines = self.buffer.copy()
             self.buffer.clear()
             self.progress_sent = dict(self.progress)
             self.chunk_id += 1
-            chunk_id = self.chunk_id  # Capture under lock to avoid race
-
-        content = "\n".join(lines)
+            chunk_id = self.chunk_id
+        content = '\n'.join(lines)
         line_count = len(lines)
-
-        # Call custom callback if provided
         if self.on_flush:
             try:
                 self.on_flush(content, line_count, chunk_id)
             except Exception:
-                pass  # Silently ignore callback errors to avoid flooding stderr
-
-        # Write to destination (file or API)
+                pass
         if self.destination is not None and lines:
             self._write_destination(content)
 
@@ -218,20 +176,18 @@ class ConsoleLogger:
         try:
             if self.is_api:
                 import requests
-
-                payload = {"timestamp": datetime.now().astimezone().isoformat(), "message": content}
+                payload = {'timestamp': datetime.now().astimezone().isoformat(), 'message': content}
                 requests.post(str(self.destination), json=payload, timeout=5)
             else:
                 self.destination.parent.mkdir(parents=True, exist_ok=True)
-                with self.destination.open("a", encoding="utf-8") as f:
-                    f.write(content + "\n")
+                with self.destination.open('a', encoding='utf-8') as f:
+                    f.write(content + '\n')
         except Exception as e:
-            print(f"Console logger write error: {e}", file=self.original_stderr)
+            print(f'Console logger write error: {e}', file=self.original_stderr)
 
     class _ConsoleCapture:
         """Lightweight stdout/stderr capture."""
-
-        __slots__ = ("callback", "original")
+        __slots__ = ('callback', 'original')
 
         def __init__(self, original, callback):
             """Initialize a stream wrapper that redirects writes to a callback while preserving the original."""
@@ -260,8 +216,7 @@ class ConsoleLogger:
 
     class _LogHandler(logging.Handler):
         """Lightweight logging handler."""
-
-        __slots__ = ("callback",)
+        __slots__ = ('callback',)
 
         def __init__(self, callback):
             """Initialize a lightweight logging.Handler that forwards log records to the provided callback."""
@@ -270,8 +225,7 @@ class ConsoleLogger:
 
         def emit(self, record):
             """Format and forward LogRecord messages to the capture callback for unified log streaming."""
-            self.callback(self.format(record) + "\n", None)
-
+            self.callback(self.format(record) + '\n', None)
 
 class _DriveInfo:
     """Resolve mounted storage paths backed by local drives.
@@ -292,18 +246,10 @@ class _DriveInfo:
         partitions = [p for p in psutil.disk_partitions(all=False) if p.mountpoint]
         if not all_drives:
             return [_DriveInfo._current_mount(partitions)]
-
-        mounts = [
-            p.mountpoint for p in partitions if Path(p.mountpoint).is_dir() and "dontbrowse" not in p.opts.split(",")
-        ]
+        mounts = [p.mountpoint for p in partitions if Path(p.mountpoint).is_dir() and 'dontbrowse' not in p.opts.split(',')]
         if len(mounts) <= 1:
             return _DriveInfo._sort(mounts) or [_DriveInfo._current_mount(partitions)]
-
-        for getter in (
-            _DriveInfo._macos_mounts if MACOS else None,
-            _DriveInfo._linux_mounts if LINUX else None,
-            _DriveInfo._windows_mounts if WINDOWS else None,
-        ):
+        for getter in (_DriveInfo._macos_mounts if MACOS else None, _DriveInfo._linux_mounts if LINUX else None, _DriveInfo._windows_mounts if WINDOWS else None):
             if getter:
                 try:
                     platform_mounts = getter(partitions)
@@ -316,8 +262,8 @@ class _DriveInfo:
     @staticmethod
     def _sort(mounts):
         """Sort mounted paths with root first, excluding boot/firmware partitions like /boot and /boot/efi."""
-        mounts = {m for m in mounts if not (m + "/").startswith(("/boot/", "/efi/"))}
-        return sorted(mounts, key=lambda mount: (mount != "/", mount))
+        mounts = {m for m in mounts if not (m + '/').startswith(('/boot/', '/efi/'))}
+        return sorted(mounts, key=lambda mount: (mount != '/', mount))
 
     @staticmethod
     def _current_mount(partitions):
@@ -325,7 +271,7 @@ class _DriveInfo:
         try:
             cwd = Path.cwd().resolve()
         except OSError:
-            return "C:\\" if WINDOWS else "/"
+            return 'C:\\' if WINDOWS else '/'
         matches = []
         for partition in partitions:
             try:
@@ -334,33 +280,26 @@ class _DriveInfo:
                 continue
             if cwd == mount or cwd.is_relative_to(mount):
                 matches.append(partition.mountpoint)
-        return max(matches, key=len, default=Path.cwd().anchor or "/")
+        return max(matches, key=len, default=Path.cwd().anchor or '/')
 
     @staticmethod
     def _macos_mounts(partitions):
         """Get user-visible macOS mounts backed by physical disks."""
-        disk_info = plistlib.loads(subprocess.check_output(["diskutil", "list", "-plist", "physical"], timeout=5))
-        physical_devices = set(disk_info.get("WholeDisks", []))
-        for disk in disk_info.get("AllDisksAndPartitions", []):
-            physical_devices.add(disk.get("DeviceIdentifier", ""))
-            physical_devices.update(p.get("DeviceIdentifier", "") for p in disk.get("Partitions", []))
-
-        mounts, volume_groups = [], set()
+        disk_info = plistlib.loads(subprocess.check_output(['diskutil', 'list', '-plist', 'physical'], timeout=5))
+        physical_devices = set(disk_info.get('WholeDisks', []))
+        for disk in disk_info.get('AllDisksAndPartitions', []):
+            physical_devices.add(disk.get('DeviceIdentifier', ''))
+            physical_devices.update((p.get('DeviceIdentifier', '') for p in disk.get('Partitions', [])))
+        (mounts, volume_groups) = ([], set())
         for partition in partitions:
-            if partition.mountpoint != "/" and "dontbrowse" in partition.opts.split(","):
+            if partition.mountpoint != '/' and 'dontbrowse' in partition.opts.split(','):
                 continue
-            info = plistlib.loads(
-                subprocess.check_output(
-                    ["diskutil", "info", "-plist", partition.mountpoint],
-                    stderr=subprocess.DEVNULL,
-                    timeout=5,
-                )
-            )
-            devices = {info.get("DeviceIdentifier", "")}
-            devices.update(s.get("APFSPhysicalStore", "") for s in info.get("APFSPhysicalStores", []))
+            info = plistlib.loads(subprocess.check_output(['diskutil', 'info', '-plist', partition.mountpoint], stderr=subprocess.DEVNULL, timeout=5))
+            devices = {info.get('DeviceIdentifier', '')}
+            devices.update((s.get('APFSPhysicalStore', '') for s in info.get('APFSPhysicalStores', [])))
             if not devices & physical_devices:
                 continue
-            group = info.get("APFSVolumeGroupID") or info.get("APFSContainerReference") or partition.mountpoint
+            group = info.get('APFSVolumeGroupID') or info.get('APFSContainerReference') or partition.mountpoint
             if group in volume_groups:
                 continue
             volume_groups.add(group)
@@ -370,42 +309,27 @@ class _DriveInfo:
     @staticmethod
     def _linux_mounts(_partitions):
         """Get Linux mounts backed by physical block devices."""
-        block_info = json.loads(
-            subprocess.check_output(
-                ["lsblk", "--json", "--output", "NAME,TYPE,MOUNTPOINT,MOUNTPOINTS"], text=True, timeout=5
-            )
-        )
+        block_info = json.loads(subprocess.check_output(['lsblk', '--json', '--output', 'NAME,TYPE,MOUNTPOINT,MOUNTPOINTS'], text=True, timeout=5))
         mounts = []
 
         def visit(block, physical=False):
-            physical = physical or block.get("type") == "disk"
+            physical = physical or block.get('type') == 'disk'
             if physical:
-                values = block.get("mountpoints") or [block.get("mountpoint")]
+                values = block.get('mountpoints') or [block.get('mountpoint')]
                 if isinstance(values, str):
                     values = [values]
-                mounts.extend(m for m in values if isinstance(m, str) and m.startswith("/") and Path(m).is_dir())
-            for child in block.get("children", []):
+                mounts.extend((m for m in values if isinstance(m, str) and m.startswith('/') and Path(m).is_dir()))
+            for child in block.get('children', []):
                 visit(child, physical)
-
-        for block in block_info.get("blockdevices", []):
+        for block in block_info.get('blockdevices', []):
             visit(block)
         return mounts
 
     @staticmethod
     def _windows_mounts(_partitions):
         """Get Windows fixed local drive mounts."""
-        output = subprocess.check_output(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object -ExpandProperty DeviceID",
-            ],
-            text=True,
-            timeout=5,
-        )
-        return [f"{drive}\\" for drive in (line.strip() for line in output.splitlines()) if drive]
-
+        output = subprocess.check_output(['powershell', '-NoProfile', '-Command', "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object -ExpandProperty DeviceID"], text=True, timeout=5)
+        return [f'{drive}\\' for drive in (line.strip() for line in output.splitlines()) if drive]
 
 class SystemLogger:
     """Log dynamic system metrics for training monitoring.
@@ -447,23 +371,20 @@ class SystemLogger:
         Args:
             all_drives (bool): If True, monitor all mounted drives. If False, monitor the current drive.
         """
-        import psutil  # scoped as slow import
-
+        import psutil
         self.pynvml = None
         self.nvidia_initialized = self._init_nvidia()
         self.nvidia_versions = {}
         if self.nvidia_initialized:
             try:
-                self.nvidia_versions["driver_version"] = self.pynvml.nvmlSystemGetDriverVersion()
+                self.nvidia_versions['driver_version'] = self.pynvml.nvmlSystemGetDriverVersion()
                 cuda = self.pynvml.nvmlSystemGetCudaDriverVersion_v2()
-                self.nvidia_versions["cuda_version"] = f"{cuda // 1000}.{cuda % 1000 // 10}"
+                self.nvidia_versions['cuda_version'] = f'{cuda // 1000}.{cuda % 1000 // 10}'
             except self.pynvml.NVMLError:
                 pass
         self.net_start = psutil.net_io_counters()
         self.disk_start = psutil.disk_io_counters()
         self.mounts = _DriveInfo.mounts(psutil, all_drives)
-
-        # For rate calculation
         self._prev_net = self.net_start
         self._prev_disk = self.disk_start
         self._prev_time = time.time()
@@ -472,18 +393,15 @@ class SystemLogger:
         """Initialize NVIDIA GPU monitoring with pynvml."""
         if MACOS:
             return False
-
         try:
-            import pynvml  # scoped as slow import
-
+            import pynvml
             self.pynvml = pynvml
             pynvml.nvmlInit()
             return True
         except Exception as e:
             import torch
-
             if torch.cuda.is_available():
-                LOGGER.warning(f"SystemLogger NVML init failed: {e}")
+                LOGGER.warning(f'SystemLogger NVML init failed: {e}')
             return False
 
     def get_metrics(self, rates=False):
@@ -535,73 +453,36 @@ class SystemLogger:
             >>> logger.get_metrics()["cpu"]  # CPU percentage
             >>> logger.get_metrics(rates=True)["network"]["recv_mbs"]  # MB/s download rate
         """
-        import psutil  # scoped as slow import
-
+        import psutil
         net = psutil.net_io_counters()
         disk_io = psutil.disk_io_counters()
         memory = psutil.virtual_memory()
         now = time.time()
-
-        # Calculate elapsed time since last call
-        elapsed = max(0.1, now - self._prev_time)  # Avoid division by zero
-
+        elapsed = max(0.1, now - self._prev_time)
         if rates:
-            disk_io_metrics = {
-                "read_mbs": round(max(0, (disk_io.read_bytes - self._prev_disk.read_bytes) / 1e6 / elapsed), 3),
-                "write_mbs": round(max(0, (disk_io.write_bytes - self._prev_disk.write_bytes) / 1e6 / elapsed), 3),
-            }
+            disk_io_metrics = {'read_mbs': round(max(0, (disk_io.read_bytes - self._prev_disk.read_bytes) / 1000000.0 / elapsed), 3), 'write_mbs': round(max(0, (disk_io.write_bytes - self._prev_disk.write_bytes) / 1000000.0 / elapsed), 3)}
         else:
-            disk_io_metrics = {
-                "read_mb": round((disk_io.read_bytes - self.disk_start.read_bytes) / 1e6, 3),
-                "write_mb": round((disk_io.write_bytes - self.disk_start.write_bytes) / 1e6, 3),
-            }
-
+            disk_io_metrics = {'read_mb': round((disk_io.read_bytes - self.disk_start.read_bytes) / 1000000.0, 3), 'write_mb': round((disk_io.write_bytes - self.disk_start.write_bytes) / 1000000.0, 3)}
         disks = []
-        for mounts in (self.mounts, ["C:\\" if WINDOWS else "/"]):
+        for mounts in (self.mounts, ['C:\\' if WINDOWS else '/']):
             for mount in mounts:
                 try:
                     usage = shutil.disk_usage(mount)
-                    disks.append(
-                        {
-                            "mount": mount,
-                            "used_gb": round(usage.used / 1e9, 3),
-                            "total_gb": round(usage.total / 1e9, 3),
-                        }
-                    )
+                    disks.append({'mount': mount, 'used_gb': round(usage.used / 1000000000.0, 3), 'total_gb': round(usage.total / 1000000000.0, 3)})
                 except (PermissionError, OSError):
-                    continue  # Skip inaccessible drives
+                    continue
             if disks:
                 break
-
-        metrics = {
-            **self.nvidia_versions,
-            "cpu": round(psutil.cpu_percent(), 3),
-            "ram": round(memory.percent, 3),
-            "disk": disks,
-            "disk_io": disk_io_metrics,
-            "gpus": {},
-        }
-
+        metrics = {**self.nvidia_versions, 'cpu': round(psutil.cpu_percent(), 3), 'ram': round(memory.percent, 3), 'disk': disks, 'disk_io': disk_io_metrics, 'gpus': {}}
         if rates:
-            metrics["network"] = {
-                "recv_mbs": round(max(0, (net.bytes_recv - self._prev_net.bytes_recv) / 1e6 / elapsed), 3),
-                "sent_mbs": round(max(0, (net.bytes_sent - self._prev_net.bytes_sent) / 1e6 / elapsed), 3),
-            }
+            metrics['network'] = {'recv_mbs': round(max(0, (net.bytes_recv - self._prev_net.bytes_recv) / 1000000.0 / elapsed), 3), 'sent_mbs': round(max(0, (net.bytes_sent - self._prev_net.bytes_sent) / 1000000.0 / elapsed), 3)}
         else:
-            metrics["network"] = {
-                "recv_mb": round((net.bytes_recv - self.net_start.bytes_recv) / 1e6, 3),
-                "sent_mb": round((net.bytes_sent - self.net_start.bytes_sent) / 1e6, 3),
-            }
-
-        # Always update previous values for accurate rate calculation on next call
+            metrics['network'] = {'recv_mb': round((net.bytes_recv - self.net_start.bytes_recv) / 1000000.0, 3), 'sent_mb': round((net.bytes_sent - self.net_start.bytes_sent) / 1000000.0, 3)}
         self._prev_net = net
         self._prev_disk = disk_io
         self._prev_time = now
-
-        # Add GPU metrics (NVIDIA only)
         if self.nvidia_initialized:
-            metrics["gpus"].update(self._get_nvidia_metrics())
-
+            metrics['gpus'].update(self._get_nvidia_metrics())
         return metrics
 
     def _get_nvidia_metrics(self):
@@ -617,56 +498,31 @@ class SystemLogger:
                 memory = self.pynvml.nvmlDeviceGetMemoryInfo(handle)
                 temp = self.pynvml.nvmlDeviceGetTemperature(handle, self.pynvml.NVML_TEMPERATURE_GPU)
                 power = self.pynvml.nvmlDeviceGetPowerUsage(handle) // 1000
-
-                gpus[str(i)] = {
-                    "usage": round(util.gpu, 3),
-                    "memory": round((memory.used / memory.total) * 100, 3),
-                    "temp": temp,
-                    "power": power,
-                }
+                gpus[str(i)] = {'usage': round(util.gpu, 3), 'memory': round(memory.used / memory.total * 100, 3), 'temp': temp, 'power': power}
         except Exception:
             pass
         return gpus
-
-
-if __name__ == "__main__":
-    print("SystemLogger Real-time Metrics Monitor")
-    print("Press Ctrl+C to stop\n")
-
+if __name__ == '__main__':
+    print('SystemLogger Real-time Metrics Monitor')
+    print('Press Ctrl+C to stop\n')
     logger = SystemLogger(all_drives=True)
-
     try:
         while True:
             metrics = logger.get_metrics()
-
-            # Clear screen (works on most terminals)
-            print("\033[H\033[J", end="", flush=True)
-
-            # Display system metrics
+            print('\x1b[H\x1b[J', end='', flush=True)
             print(f"CPU: {metrics['cpu']:5.1f}%")
             print(f"RAM: {metrics['ram']:5.1f}%")
             print(f"Net Recv: {metrics['network']['recv_mb']:9.1f} MB")
             print(f"Net Sent: {metrics['network']['sent_mb']:9.1f} MB")
-
-            # Display disk metrics
-            print("\nDisk Metrics:")
-            for disk in metrics["disk"]:
+            print('\nDisk Metrics:')
+            for disk in metrics['disk']:
                 print(f"  {disk['mount']}: {disk['used_gb']:.1f}/{disk['total_gb']:.1f} GB")
-
-            # Display GPU metrics if available
-            if metrics["gpus"]:
-                print("\nGPU Metrics:")
-                for gpu_id, gpu_data in metrics["gpus"].items():
-                    print(
-                        f"  GPU {gpu_id}: {gpu_data['usage']:3}% | "
-                        f"Mem: {gpu_data['memory']:5.1f}% | "
-                        f"Temp: {gpu_data['temp']:2}°C | "
-                        f"Power: {gpu_data['power']:3}W"
-                    )
+            if metrics['gpus']:
+                print('\nGPU Metrics:')
+                for (gpu_id, gpu_data) in metrics['gpus'].items():
+                    print(f"  GPU {gpu_id}: {gpu_data['usage']:3}% | Mem: {gpu_data['memory']:5.1f}% | Temp: {gpu_data['temp']:2}°C | Power: {gpu_data['power']:3}W")
             else:
-                print("\nGPU: No NVIDIA GPUs detected")
-
+                print('\nGPU: No NVIDIA GPUs detected')
             time.sleep(1)
-
     except KeyboardInterrupt:
-        print("\n\nStopped monitoring.")
+        print('\n\nStopped monitoring.')

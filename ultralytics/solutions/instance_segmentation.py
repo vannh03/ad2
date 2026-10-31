@@ -1,10 +1,6 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 from typing import Any
-
 from ultralytics.engine.results import Results
 from ultralytics.solutions.solutions import BaseSolution, SolutionResults
-
 
 class InstanceSegmentation(BaseSolution):
     """A class to manage instance segmentation in images or video streams.
@@ -34,21 +30,20 @@ class InstanceSegmentation(BaseSolution):
         >>> print(f"Total segmented instances: {results.total_tracks}")
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """Initialize the InstanceSegmentation class for detecting and annotating segmented instances.
 
         Args:
             **kwargs (Any): Keyword arguments passed to the BaseSolution parent class including:
                 - model (str): Model name or path, defaults to "yolo26n-seg.pt".
         """
-        kwargs["model"] = kwargs.get("model", "yolo26n-seg.pt")
+        kwargs['model'] = kwargs.get('model', 'yolo26n-seg.pt')
         super().__init__(**kwargs)
+        self.show_conf = self.CFG.get('show_conf', True)
+        self.show_labels = self.CFG.get('show_labels', True)
+        self.show_boxes = self.CFG.get('show_boxes', True)
 
-        self.show_conf = self.CFG.get("show_conf", True)
-        self.show_labels = self.CFG.get("show_labels", True)
-        self.show_boxes = self.CFG.get("show_boxes", True)
-
-    def process(self, im0) -> SolutionResults:
+    def process(self, im0):
         """Perform instance segmentation on the input image and annotate the results.
 
         Args:
@@ -63,24 +58,13 @@ class InstanceSegmentation(BaseSolution):
             >>> summary = segmenter.process(frame)
             >>> print(summary)
         """
-        self.extract_tracks(im0)  # Extract tracks (bounding boxes, classes, and masks)
-        self.masks = getattr(self.tracks, "masks", None)
-
-        # Iterate over detected classes, track IDs, and segmentation masks
+        self.extract_tracks(im0)
+        self.masks = getattr(self.tracks, 'masks', None)
         if self.masks is None:
             self.LOGGER.warning("No masks detected! Ensure you're using a supported Ultralytics segmentation model.")
             plot_im = im0
         else:
             results = Results(im0, path=None, names=self.names, boxes=self.track_data.data, masks=self.masks.data)
-            plot_im = results.plot(
-                line_width=self.line_width,
-                boxes=self.show_boxes,
-                conf=self.show_conf,
-                labels=self.show_labels,
-                color_mode="instance",
-            )
-
-        self.display_output(plot_im)  # Display the annotated output using the base class function
-
-        # Return SolutionResults
+            plot_im = results.plot(line_width=self.line_width, boxes=self.show_boxes, conf=self.show_conf, labels=self.show_labels, color_mode='instance')
+        self.display_output(plot_im)
         return SolutionResults(plot_im=plot_im, total_tracks=len(self.track_ids))

@@ -1,18 +1,10 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
-
 import torch
 from torch import nn
-
 from ultralytics.utils import IS_JETSON, LOGGER, is_jetson
 from ultralytics.utils.torch_utils import unwrap_model
-
 from .base import BaseBackend
-
 
 class PyTorchBackend(BaseBackend):
     """PyTorch inference backend for native model execution.
@@ -21,15 +13,7 @@ class PyTorchBackend(BaseBackend):
     instances. Supports model layer fusion, FP16 precision, and NVIDIA Jetson compatibility.
     """
 
-    def __init__(
-        self,
-        weight: str | Path | nn.Module,
-        device: torch.device,
-        fp16: bool = False,
-        fuse: bool = True,
-        verbose: bool = True,
-        end2end: bool | None = None,
-    ):
+    def __init__(self, weight, device, fp16=False, fuse=True, verbose=True, end2end=None):
         """Initialize the PyTorch backend.
 
         Args:
@@ -45,41 +29,34 @@ class PyTorchBackend(BaseBackend):
         self.end2end_override = end2end
         super().__init__(weight, device, fp16)
 
-    def load_model(self, weight: str | torch.nn.Module) -> None:
+    def load_model(self, weight):
         """Load a PyTorch model from a checkpoint file or nn.Module instance.
 
         Args:
             weight (str | torch.nn.Module): Path to the .pt checkpoint or a pre-loaded module.
         """
         from ultralytics.nn.tasks import BaseModel, load_checkpoint
-
         model = weight if isinstance(weight, torch.nn.Module) else load_checkpoint(weight, device=self.device)[0]
-        if self.end2end_override is not None and hasattr(model, "end2end"):
+        if self.end2end_override is not None and hasattr(model, 'end2end'):
             model.end2end = self.end2end_override
-        if self.fuse and hasattr(model, "fuse"):
+        if self.fuse and hasattr(model, 'fuse'):
             if IS_JETSON and is_jetson(jetpack=5):
                 model = model.to(self.device)
             model = model.fuse(verbose=self.verbose) if isinstance(model, BaseModel) else model.fuse()
         model = model.to(self.device)
-
-        # Extract model attributes
-        if hasattr(model, "kpt_shape"):
+        if hasattr(model, 'kpt_shape'):
             self.kpt_shape = model.kpt_shape
-        self.stride = max(int(model.stride.max()), 32) if hasattr(model, "stride") else 32
-        self.names = model.module.names if hasattr(model, "module") else getattr(model, "names", {})
-        self.channels = model.yaml.get("channels", 3) if hasattr(model, "yaml") else 3
+        self.stride = max(int(model.stride.max()), 32) if hasattr(model, 'stride') else 32
+        self.names = model.module.names if hasattr(model, 'module') else getattr(model, 'names', {})
+        self.channels = model.yaml.get('channels', 3) if hasattr(model, 'yaml') else 3
         model.half() if self.fp16 else model.float()
-
         for p in model.parameters():
             p.requires_grad = False
-
         self.model = model
-        self.end2end = getattr(model, "end2end", False)
+        self.end2end = getattr(model, 'end2end', False)
         self.base_model = isinstance(unwrap_model(model), BaseModel)
 
-    def forward(
-        self, im: torch.Tensor, augment: bool = False, embed: list | None = None, **kwargs: Any
-    ) -> torch.Tensor | list[torch.Tensor]:
+    def forward(self, im, augment=False, embed=None, **kwargs):
         """Run native PyTorch inference with support for augmentation and embeddings.
 
         Args:
@@ -91,10 +68,9 @@ class PyTorchBackend(BaseBackend):
         Returns:
             (torch.Tensor | list[torch.Tensor]): Model predictions as tensor(s).
         """
-        if not self.base_model:  # a foreign nn.Module defines no `augment`/`embed` contract to honor
+        if not self.base_model:
             return self.model(im, **kwargs)
         return self.model(im, augment=augment, embed=embed, **kwargs)
-
 
 class TorchScriptBackend(BaseBackend):
     """PyTorch TorchScript inference backend for serialized model execution.
@@ -103,7 +79,7 @@ class TorchScriptBackend(BaseBackend):
     torch.jit.script. Supports FP16 precision and embedded metadata extraction.
     """
 
-    def __init__(self, weight: str | Path, device: torch.device, fp16: bool = False):
+    def __init__(self, weight, device, fp16=False):
         """Initialize the TorchScript backend.
 
         Args:
@@ -113,20 +89,19 @@ class TorchScriptBackend(BaseBackend):
         """
         super().__init__(weight, device, fp16)
 
-    def load_model(self, weight: str) -> None:
+    def load_model(self, weight):
         """Load a TorchScript model from a .torchscript file with optional embedded metadata.
 
         Args:
             weight (str): Path to the .torchscript model file.
         """
-        import torchvision  # noqa - required for TorchScript model deserialization
-
-        LOGGER.info(f"Loading {weight} for TorchScript inference...")
+        import torchvision
+        LOGGER.info(f'Loading {weight} for TorchScript inference...')
         self.model = torch.jit.load(weight, map_location=self.device)
         self.model.half() if self.fp16 else self.model.float()
         self.apply_metadata(self.read_metadata(weight))
 
-    def forward(self, im: torch.Tensor) -> torch.Tensor | list[torch.Tensor]:
+    def forward(self, im):
         """Run TorchScript inference.
 
         Args:

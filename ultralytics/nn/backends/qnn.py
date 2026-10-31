@@ -1,16 +1,8 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
-
 import torch
-
 from ultralytics.utils import LOGGER
 from ultralytics.utils.checks import check_requirements
-
 from .base import BaseBackend
-
 
 class QNNBackend(BaseBackend):
     """Qualcomm QNN inference backend for Snapdragon hardware.
@@ -20,7 +12,7 @@ class QNNBackend(BaseBackend):
     Windows on Snapdragon, or Qualcomm Linux boards) via the HTP (NPU) backend.
     """
 
-    def load_model(self, weight: str | Path) -> None:
+    def load_model(self, weight):
         """Load a QNN context-binary model with ONNX Runtime's QNN Execution Provider plugin.
 
         Args:
@@ -29,40 +21,30 @@ class QNNBackend(BaseBackend):
         Raises:
             OSError: If the QNN Execution Provider cannot be registered (e.g. not on Snapdragon hardware).
         """
-        check_requirements("onnxruntime-qnn")
+        check_requirements('onnxruntime-qnn')
         import onnxruntime
-
         from ultralytics.utils.export.qnn import qnn_library_paths
-
         onnx_file = Path(weight)
-        LOGGER.info(f"Loading {onnx_file} for Qualcomm QNN inference...")
-
-        # Register the QNN EP (libraries resolved from the plugin helper or the onnxruntime/capi bundle) and select
-        # it; ep_library is None when QNN is already built into ONNX Runtime and needs no plugin registration
-        ep_name = "QNNExecutionProvider"
-        ep_library, htp_backend = qnn_library_paths()
-        ep_options = {"backend_path": htp_backend}
+        LOGGER.info(f'Loading {onnx_file} for Qualcomm QNN inference...')
+        ep_name = 'QNNExecutionProvider'
+        (ep_library, htp_backend) = qnn_library_paths()
+        ep_options = {'backend_path': htp_backend}
         options = onnxruntime.SessionOptions()
         if ep_library:
             onnxruntime.register_execution_provider_library(ep_name, ep_library)
             devices = [d for d in onnxruntime.get_ep_devices() if d.ep_name == ep_name]
             if not devices:
-                raise OSError(
-                    "QNN Execution Provider registered but no QNN devices were found. Run on a Qualcomm Snapdragon "
-                    "device with 'onnxruntime-qnn' installed."
-                )
+                raise OSError("QNN Execution Provider registered but no QNN devices were found. Run on a Qualcomm Snapdragon device with 'onnxruntime-qnn' installed.")
             options.add_provider_for_devices(devices, ep_options)
             self.session = onnxruntime.InferenceSession(str(onnx_file), sess_options=options)
         else:
-            self.session = onnxruntime.InferenceSession(
-                str(onnx_file), sess_options=options, providers=[ep_name], provider_options=[ep_options]
-            )
+            self.session = onnxruntime.InferenceSession(str(onnx_file), sess_options=options, providers=[ep_name], provider_options=[ep_options])
         self.output_names = [x.name for x in self.session.get_outputs()]
-        shape = self.session.get_inputs()[0].shape  # channel-last exports take [N, H, W, C] input
-        self.nhwc = len(shape) == 4 and shape[3] in {1, 3} and shape[1] not in {1, 3}
+        shape = self.session.get_inputs()[0].shape
+        self.nhwc = len(shape) == 4 and shape[3] in {1, 3} and (shape[1] not in {1, 3})
         self.apply_metadata(self.read_metadata(onnx_file))
 
-    def forward(self, im: torch.Tensor) -> list:
+    def forward(self, im):
         """Run inference on the Qualcomm QNN runtime.
 
         Args:

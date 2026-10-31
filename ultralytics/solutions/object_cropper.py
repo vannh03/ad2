@@ -1,11 +1,7 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 from pathlib import Path
 from typing import Any
-
 from ultralytics.solutions.solutions import BaseSolution, SolutionResults
 from ultralytics.utils.plotting import save_one_box
-
 
 class ObjectCropper(BaseSolution):
     """A class to manage the cropping of detected objects in a real-time video stream or images.
@@ -29,7 +25,7 @@ class ObjectCropper(BaseSolution):
         >>> print(f"Total cropped objects: {cropper.crop_idx}")
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """Initialize the ObjectCropper class for cropping objects from detected bounding boxes.
 
         Args:
@@ -37,17 +33,16 @@ class ObjectCropper(BaseSolution):
                 - crop_dir (str): Path to the directory for saving cropped object images.
         """
         super().__init__(**kwargs)
-
-        self.crop_dir = self.CFG["crop_dir"]  # Directory for storing cropped detections
+        self.crop_dir = self.CFG['crop_dir']
         Path(self.crop_dir).mkdir(parents=True, exist_ok=True)
-        if self.CFG["show"]:
+        if self.CFG['show']:
             self.LOGGER.warning(f"show=True is not supported for ObjectCropper; saving crops to '{self.crop_dir}'.")
-            self.CFG["show"] = False
-        self.crop_idx = 0  # Initialize counter for total cropped objects
-        self.iou = self.CFG["iou"]
-        self.conf = self.CFG["conf"]
+            self.CFG['show'] = False
+        self.crop_idx = 0
+        self.iou = self.CFG['iou']
+        self.conf = self.CFG['conf']
 
-    def process(self, im0) -> SolutionResults:
+    def process(self, im0):
         """Crop detected objects from the input image and save them as separate images.
 
         Args:
@@ -64,25 +59,9 @@ class ObjectCropper(BaseSolution):
             >>> print(f"Total cropped objects: {results.total_crop_objects}")
         """
         with self.profilers[0]:
-            results = self.model.predict(
-                im0,
-                classes=self.classes,
-                conf=self.conf,
-                iou=self.iou,
-                device=self.CFG["device"],
-                imgsz=self.CFG["imgsz"],
-                verbose=False,
-            )[0]
-            self.clss = results.boxes.cls.tolist()  # required for logging only.
-
+            results = self.model.predict(im0, classes=self.classes, conf=self.conf, iou=self.iou, device=self.CFG['device'], imgsz=self.CFG['imgsz'], verbose=False)[0]
+            self.clss = results.boxes.cls.tolist()
         for box in results.boxes:
             self.crop_idx += 1
-            save_one_box(
-                box.xyxy,
-                im0,
-                file=Path(self.crop_dir) / f"crop_{self.crop_idx}.jpg",
-                BGR=True,
-            )
-
-        # Return SolutionResults
+            save_one_box(box.xyxy, im0, file=Path(self.crop_dir) / f'crop_{self.crop_idx}.jpg', BGR=True)
         return SolutionResults(plot_im=im0, total_crop_objects=self.crop_idx)

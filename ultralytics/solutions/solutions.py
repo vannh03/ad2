@@ -1,22 +1,15 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 import math
 from collections import Counter, defaultdict
 from functools import lru_cache
 from typing import Any
-
 import cv2
 import numpy as np
 import torch
-
 from ultralytics import YOLO
 from ultralytics.solutions.config import SolutionConfig
 from ultralytics.utils import ASSETS_URL, LOGGER, ops
 from ultralytics.utils.checks import check_imshow, check_requirements
 from ultralytics.utils.plotting import Annotator
-
 
 class BaseSolution:
     """A base class for managing Ultralytics Solutions.
@@ -72,7 +65,7 @@ class BaseSolution:
         >>> solution.display_output(image)
     """
 
-    def __init__(self, is_cli: bool = False, **kwargs: Any) -> None:
+    def __init__(self, is_cli=False, **kwargs):
         """Initialize the BaseSolution class with configuration settings and YOLO model.
 
         Args:
@@ -80,17 +73,15 @@ class BaseSolution:
             **kwargs (Any): Additional configuration parameters that override defaults.
         """
         self.CFG = vars(SolutionConfig().update(**kwargs))
-        self.LOGGER = LOGGER  # Store logger object to be used in multiple solution classes
-
-        check_requirements("shapely>=2.0.0")
+        self.LOGGER = LOGGER
+        check_requirements('shapely>=2.0.0')
         from shapely.geometry import LineString, Point, Polygon
         from shapely.prepared import prep
-
         self.LineString = LineString
         self.Polygon = Polygon
         self.Point = Point
         self.prep = prep
-        self.annotator = None  # Initialize annotator
+        self.annotator = None
         self.tracks = None
         self.track_data = None
         self.boxes = []
@@ -99,44 +90,30 @@ class BaseSolution:
         self.track_line = None
         self.masks = None
         self.r_s = None
-        self.frame_no = -1  # Only for logging
-
-        self.LOGGER.info(f"Ultralytics Solutions: ✅ {self.CFG}")
-        self.region = self.CFG["region"]  # Store region data for other classes usage
-        self.line_width = self.CFG["line_width"]
-
-        # Load Model and store additional information (classes, show_conf, show_label)
-        if self.CFG["model"] is None:
-            self.CFG["model"] = "yolo26n.pt"
-        self.model = YOLO(self.CFG["model"])
+        self.frame_no = -1
+        self.LOGGER.info(f'Ultralytics Solutions: ✅ {self.CFG}')
+        self.region = self.CFG['region']
+        self.line_width = self.CFG['line_width']
+        if self.CFG['model'] is None:
+            self.CFG['model'] = 'yolo26n.pt'
+        self.model = YOLO(self.CFG['model'])
         self.names = self.model.names
-        self.classes = self.CFG["classes"]
-        self.show_conf = self.CFG["show_conf"]
-        self.show_labels = self.CFG["show_labels"]
-        self.device = self.CFG["device"]
-
-        self.track_add_args = {  # Tracker additional arguments for advance configuration
-            k: self.CFG[k] for k in ("iou", "conf", "device", "max_det", "quantize", "tracker", "imgsz")
-        }  # verbose must be passed to track method; setting it False in YOLO still logs the track information.
-
-        if is_cli and self.CFG["source"] is None:
-            d_s = "solutions_ci_demo.mp4" if "-pose" not in self.CFG["model"] else "solution_ci_pose_demo.mp4"
-            self.LOGGER.warning(f"source not provided. using default source {ASSETS_URL}/{d_s}")
+        self.classes = self.CFG['classes']
+        self.show_conf = self.CFG['show_conf']
+        self.show_labels = self.CFG['show_labels']
+        self.device = self.CFG['device']
+        self.track_add_args = {k: self.CFG[k] for k in ('iou', 'conf', 'device', 'max_det', 'quantize', 'tracker', 'imgsz')}
+        if is_cli and self.CFG['source'] is None:
+            d_s = 'solutions_ci_demo.mp4' if '-pose' not in self.CFG['model'] else 'solution_ci_pose_demo.mp4'
+            self.LOGGER.warning(f'source not provided. using default source {ASSETS_URL}/{d_s}')
             from ultralytics.utils.downloads import safe_download
-
-            safe_download(f"{ASSETS_URL}/{d_s}")  # download source from ultralytics assets
-            self.CFG["source"] = d_s  # set default source
-
-        # Initialize environment and region setup
+            safe_download(f'{ASSETS_URL}/{d_s}')
+            self.CFG['source'] = d_s
         self.env_check = check_imshow(warn=True)
         self.track_history = defaultdict(list)
+        self.profilers = (ops.Profile(device=self.device), ops.Profile(device=self.device))
 
-        self.profilers = (
-            ops.Profile(device=self.device),  # track
-            ops.Profile(device=self.device),  # solution
-        )
-
-    def adjust_box_label(self, cls: int, conf: float, track_id: int | None = None) -> str | None:
+    def adjust_box_label(self, cls, conf, track_id=None):
         """Generate a formatted label for a bounding box.
 
         This method constructs a label string for a bounding box using the class index and confidence score. Optionally
@@ -151,10 +128,10 @@ class BaseSolution:
         Returns:
             (str | None): The formatted label string if `self.show_labels` is True; otherwise, None.
         """
-        name = ("" if track_id is None else f"{track_id} ") + self.names[cls]
-        return (f"{name} {conf:.2f}" if self.show_conf else name) if self.show_labels else None
+        name = ('' if track_id is None else f'{track_id} ') + self.names[cls]
+        return (f'{name} {conf:.2f}' if self.show_conf else name) if self.show_labels else None
 
-    def extract_tracks(self, im0: np.ndarray) -> None:
+    def extract_tracks(self, im0):
         """Apply object tracking and extract tracks from an input image or frame.
 
         Args:
@@ -166,28 +143,25 @@ class BaseSolution:
             >>> solution.extract_tracks(frame)
         """
         with self.profilers[0]:
-            self.tracks = self.model.track(
-                source=im0, persist=True, classes=self.classes, verbose=False, **self.track_add_args
-            )[0]
+            self.tracks = self.model.track(source=im0, persist=True, classes=self.classes, verbose=False, **self.track_add_args)[0]
         is_obb = self.tracks.obb is not None
-        self.track_data = self.tracks.obb if is_obb else self.tracks.boxes  # Extract tracks for OBB or object detection
-
+        self.track_data = self.tracks.obb if is_obb else self.tracks.boxes
         if self.track_data and self.track_data.is_track:
             self.boxes = (self.track_data.xyxyxyxy if is_obb else self.track_data.xyxy).cpu()
             self.clss = self.track_data.cls.cpu().tolist()
             self.track_ids = self.track_data.id.int().cpu().tolist()
             self.confs = self.track_data.conf.cpu().tolist()
         else:
-            self.LOGGER.warning("No tracks found.")
-            self.boxes, self.clss, self.track_ids, self.confs = [], [], [], []
+            self.LOGGER.warning('No tracks found.')
+            (self.boxes, self.clss, self.track_ids, self.confs) = ([], [], [], [])
         self.forget_tracks([track.track_id for track in self.model.predictor.trackers[0].removed_stracks_frame])
 
-    def forget_tracks(self, track_ids: list[int]) -> None:
+    def forget_tracks(self, track_ids):
         """Drop bookkeeping for IDs retired by the active tracker."""
         for track_id in track_ids:
             self.track_history.pop(track_id, None)
 
-    def store_tracking_history(self, track_id: int, box) -> None:
+    def store_tracking_history(self, track_id, box):
         """Store the tracking history of an object.
 
         This method updates the tracking history for a given object by appending the center point of its bounding box to
@@ -201,14 +175,13 @@ class BaseSolution:
             >>> solution = BaseSolution()
             >>> solution.store_tracking_history(1, [100, 200, 300, 400])
         """
-        # Store tracking history
         self.track_line = self.track_history[track_id]
         self.track_line.append(tuple(box.mean(dim=0)) if box.numel() > 4 else (box[:4:2].mean(), box[1:4:2].mean()))
         if len(self.track_line) > 30:
             self.track_line.pop(0)
 
     @staticmethod
-    def get_enclosing_box(box: torch.Tensor | list[float]) -> torch.Tensor | list[float]:
+    def get_enclosing_box(box):
         """Return the axis-aligned box [x1, y1, x2, y2] enclosing a box extracted by `extract_tracks`.
 
         Boxes from OBB models are (4, 2) xyxyxyxy corner points, while boxes from detection models are already
@@ -228,15 +201,13 @@ class BaseSolution:
         """
         return torch.cat([box.amin(0), box.amax(0)]) if isinstance(box, torch.Tensor) and box.numel() > 4 else box
 
-    def initialize_region(self) -> None:
+    def initialize_region(self):
         """Initialize the counting region and line segment based on configuration settings."""
         if self.region is None:
             self.region = [(10, 200), (540, 200), (540, 180), (10, 180)]
-        self.r_s = (
-            self.Polygon(self.region) if len(self.region) >= 3 else self.LineString(self.region)
-        )  # region or line
+        self.r_s = self.Polygon(self.region) if len(self.region) >= 3 else self.LineString(self.region)
 
-    def display_output(self, plot_im: np.ndarray) -> None:
+    def display_output(self, plot_im):
         """Display the results of the processing, which could involve showing frames, printing counts, or saving
         results.
 
@@ -256,40 +227,32 @@ class BaseSolution:
               supports image display.
             - The display can be closed by pressing the 'q' key.
         """
-        if self.CFG.get("show") and self.env_check:
-            cv2.imshow("Ultralytics Solutions", plot_im)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                cv2.destroyAllWindows()  # Closes current frame window
+        if self.CFG.get('show') and self.env_check:
+            cv2.imshow('Ultralytics Solutions', plot_im)
+            if cv2.waitKey(1) & 255 == ord('q'):
+                cv2.destroyAllWindows()
                 return
 
-    def process(self, *args: Any, **kwargs: Any):
+    def process(self, *args, **kwargs):
         """Process method should be implemented by each Solution subclass."""
 
-    def __call__(self, *args: Any, **kwargs: Any):
+    def __call__(self, *args, **kwargs):
         """Allow instances to be called like a function with flexible arguments."""
         with self.profilers[1]:
-            result = self.process(*args, **kwargs)  # Call the subclass-specific process method
-        track_or_predict = "predict" if type(self).__name__ == "ObjectCropper" else "track"
-        track_or_predict_speed = self.profilers[0].dt * 1e3
-        solution_speed = (self.profilers[1].dt - self.profilers[0].dt) * 1e3  # solution time = process - track
-        result.speed = {track_or_predict: track_or_predict_speed, "solution": solution_speed}
-        if self.CFG["verbose"]:
+            result = self.process(*args, **kwargs)
+        track_or_predict = 'predict' if type(self).__name__ == 'ObjectCropper' else 'track'
+        track_or_predict_speed = self.profilers[0].dt * 1000.0
+        solution_speed = (self.profilers[1].dt - self.profilers[0].dt) * 1000.0
+        result.speed = {track_or_predict: track_or_predict_speed, 'solution': solution_speed}
+        if self.CFG['verbose']:
             self.frame_no += 1
-            counts = Counter(self.clss)  # Only for logging.
-            # Use model input shape (reflects imgsz) if predictor is available
-            if hasattr(self.model, "predictor") and self.model.predictor and hasattr(self.model.predictor, "imgsz"):
-                input_h, input_w = self.model.predictor.imgsz
+            counts = Counter(self.clss)
+            if hasattr(self.model, 'predictor') and self.model.predictor and hasattr(self.model.predictor, 'imgsz'):
+                (input_h, input_w) = self.model.predictor.imgsz
             else:
-                input_h, input_w = result.plot_im.shape[:2]
-            LOGGER.info(
-                f"{self.frame_no}: {input_h}x{input_w} {solution_speed:.1f}ms,"
-                f" {', '.join([f'{v} {self.names[k]}' for k, v in counts.items()])}\n"
-                f"Speed: {track_or_predict_speed:.1f}ms {track_or_predict}, "
-                f"{solution_speed:.1f}ms solution per image at shape "
-                f"(1, {getattr(self.model, 'channels', 3)}, {input_h}, {input_w})\n"
-            )
+                (input_h, input_w) = result.plot_im.shape[:2]
+            LOGGER.info(f"{self.frame_no}: {input_h}x{input_w} {solution_speed:.1f}ms, {', '.join([f'{v} {self.names[k]}' for (k, v) in counts.items()])}\nSpeed: {track_or_predict_speed:.1f}ms {track_or_predict}, {solution_speed:.1f}ms solution per image at shape (1, {getattr(self.model, 'channels', 3)}, {input_h}, {input_w})\n")
         return result
-
 
 class SolutionAnnotator(Annotator):
     """A specialized annotator class for visualizing and analyzing computer vision tasks.
@@ -328,15 +291,7 @@ class SolutionAnnotator(Annotator):
         ... )
     """
 
-    def __init__(
-        self,
-        im: np.ndarray,
-        line_width: int | None = None,
-        font_size: int | None = None,
-        font: str = "Arial.ttf",
-        pil: bool = False,
-        example: str = "abc",
-    ):
+    def __init__(self, im, line_width=None, font_size=None, font='Arial.ttf', pil=False, example='abc'):
         """Initialize the SolutionAnnotator class with an image for annotation.
 
         Args:
@@ -349,12 +304,7 @@ class SolutionAnnotator(Annotator):
         """
         super().__init__(im, line_width, font_size, font, pil, example)
 
-    def draw_region(
-        self,
-        reg_pts: list[tuple[int, int]] | None = None,
-        color: tuple[int, int, int] = (0, 255, 0),
-        thickness: int = 5,
-    ):
+    def draw_region(self, reg_pts=None, color=(0, 255, 0), thickness=5):
         """Draw a region or line on the image.
 
         Args:
@@ -363,18 +313,10 @@ class SolutionAnnotator(Annotator):
             thickness (int): Line thickness for drawing the region.
         """
         cv2.polylines(self.im, [np.array(reg_pts, dtype=np.int32)], isClosed=True, color=color, thickness=thickness)
-
-        # Draw small circles at the corner points
         for point in reg_pts:
-            cv2.circle(self.im, (point[0], point[1]), thickness * 2, color, -1)  # -1 fills the circle
+            cv2.circle(self.im, (point[0], point[1]), thickness * 2, color, -1)
 
-    def queue_counts_display(
-        self,
-        label: str,
-        points: list[tuple[int, int]] | None = None,
-        region_color: tuple[int, int, int] = (255, 255, 255),
-        txt_color: tuple[int, int, int] = (0, 0, 0),
-    ):
+    def queue_counts_display(self, label, points=None, region_color=(255, 255, 255), txt_color=(0, 0, 0)):
         """Display queue counts on an image centered at the points with customizable font size and colors.
 
         Args:
@@ -387,40 +329,19 @@ class SolutionAnnotator(Annotator):
         y_values = [point[1] for point in points]
         center_x = sum(x_values) // len(points)
         center_y = sum(y_values) // len(points)
-
         text_size = cv2.getTextSize(label, 0, fontScale=self.sf, thickness=self.tf)[0]
         text_width = text_size[0]
         text_height = text_size[1]
-
         rect_width = text_width + 20
         rect_height = text_height + 20
         rect_top_left = (center_x - rect_width // 2, center_y - rect_height // 2)
         rect_bottom_right = (center_x + rect_width // 2, center_y + rect_height // 2)
         cv2.rectangle(self.im, rect_top_left, rect_bottom_right, region_color, -1)
-
         text_x = center_x - text_width // 2
         text_y = center_y + text_height // 2
+        cv2.putText(self.im, label, (text_x, text_y), 0, fontScale=self.sf, color=txt_color, thickness=self.tf, lineType=cv2.LINE_AA)
 
-        # Draw text
-        cv2.putText(
-            self.im,
-            label,
-            (text_x, text_y),
-            0,
-            fontScale=self.sf,
-            color=txt_color,
-            thickness=self.tf,
-            lineType=cv2.LINE_AA,
-        )
-
-    def display_analytics(
-        self,
-        im0: np.ndarray,
-        text: dict[str, Any],
-        txt_color: tuple[int, int, int],
-        bg_color: tuple[int, int, int],
-        margin: int,
-    ):
+    def display_analytics(self, im0, text, txt_color, bg_color, margin):
         """Display overall statistics for Solutions (e.g., parking management and object counting).
 
         Args:
@@ -433,8 +354,8 @@ class SolutionAnnotator(Annotator):
         horizontal_gap = int(im0.shape[1] * 0.02)
         vertical_gap = int(im0.shape[0] * 0.01)
         text_y_offset = 0
-        for label, value in text.items():
-            txt = f"{label}: {value}"
+        for (label, value) in text.items():
+            txt = f'{label}: {value}'
             text_size = cv2.getTextSize(txt, 0, self.sf, self.tf)[0]
             if text_size[0] < 5 or text_size[1] < 5:
                 text_size = (5, 5)
@@ -449,28 +370,28 @@ class SolutionAnnotator(Annotator):
             text_y_offset = rect_y2
 
     @staticmethod
-    def _point_xy(point: Any) -> tuple[float, float]:
+    def _point_xy(point):
         """Convert a keypoint-like object to an (x, y) tuple of floats."""
-        if hasattr(point, "detach"):  # torch.Tensor
+        if hasattr(point, 'detach'):
             point = point.detach()
-        if hasattr(point, "cpu"):  # torch.Tensor
+        if hasattr(point, 'cpu'):
             point = point.cpu()
-        if hasattr(point, "numpy"):  # torch.Tensor
+        if hasattr(point, 'numpy'):
             point = point.numpy()
-        if hasattr(point, "tolist"):  # numpy / torch
+        if hasattr(point, 'tolist'):
             point = point.tolist()
-        return float(point[0]), float(point[1])
+        return (float(point[0]), float(point[1]))
 
     @staticmethod
     @lru_cache(maxsize=256)
-    def _estimate_pose_angle_cached(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
+    def _estimate_pose_angle_cached(a, b, c):
         """Calculate the angle between three points for workout monitoring (cached)."""
         radians = math.atan2(c[1] - b[1], c[0] - b[0]) - math.atan2(a[1] - b[1], a[0] - b[0])
         angle = abs(radians * 180.0 / math.pi)
-        return angle if angle <= 180.0 else (360 - angle)
+        return angle if angle <= 180.0 else 360 - angle
 
     @staticmethod
-    def estimate_pose_angle(a: Any, b: Any, c: Any) -> float:
+    def estimate_pose_angle(a, b, c):
         """Calculate the angle between three points for workout monitoring.
 
         Args:
@@ -481,20 +402,10 @@ class SolutionAnnotator(Annotator):
         Returns:
             (float): The angle in degrees between the three points.
         """
-        a_xy, b_xy, c_xy = (
-            SolutionAnnotator._point_xy(a),
-            SolutionAnnotator._point_xy(b),
-            SolutionAnnotator._point_xy(c),
-        )
+        (a_xy, b_xy, c_xy) = (SolutionAnnotator._point_xy(a), SolutionAnnotator._point_xy(b), SolutionAnnotator._point_xy(c))
         return SolutionAnnotator._estimate_pose_angle_cached(a_xy, b_xy, c_xy)
 
-    def draw_specific_kpts(
-        self,
-        keypoints: list[list[float]],
-        indices: list[int] | None = None,
-        radius: int = 2,
-        conf_thresh: float = 0.25,
-    ) -> np.ndarray:
+    def draw_specific_kpts(self, keypoints, indices=None, radius=2, conf_thresh=0.25):
         """Draw specific keypoints for gym steps counting.
 
         Args:
@@ -513,29 +424,14 @@ class SolutionAnnotator(Annotator):
         """
         indices = indices or [2, 5, 7]
         n = len(keypoints)
-        points = [
-            (int(keypoints[j][0]), int(keypoints[j][1]))
-            for j in indices
-            if 0 <= j < n and (float(keypoints[j][2]) if len(keypoints[j]) > 2 else 1.0) >= conf_thresh
-        ]
-
-        # Draw lines between consecutive points
-        for start, end in zip(points[:-1], points[1:]):
+        points = [(int(keypoints[j][0]), int(keypoints[j][1])) for j in indices if 0 <= j < n and (float(keypoints[j][2]) if len(keypoints[j]) > 2 else 1.0) >= conf_thresh]
+        for (start, end) in zip(points[:-1], points[1:]):
             cv2.line(self.im, start, end, (0, 255, 0), 2, lineType=cv2.LINE_AA)
-
-        # Draw circles for keypoints
         for pt in points:
             cv2.circle(self.im, pt, radius, (0, 0, 255), -1, lineType=cv2.LINE_AA)
-
         return self.im
 
-    def plot_workout_information(
-        self,
-        display_text: str,
-        position: tuple[int, int],
-        color: tuple[int, int, int] = (104, 31, 17),
-        txt_color: tuple[int, int, int] = (255, 255, 255),
-    ) -> int:
+    def plot_workout_information(self, display_text, position, color=(104, 31, 17), txt_color=(255, 255, 255)):
         """Draw workout text with a background on the image.
 
         Args:
@@ -547,30 +443,12 @@ class SolutionAnnotator(Annotator):
         Returns:
             (int): The height of the text.
         """
-        (text_width, text_height), _ = cv2.getTextSize(display_text, 0, fontScale=self.sf, thickness=self.tf)
-
-        # Draw background rectangle
-        cv2.rectangle(
-            self.im,
-            (position[0], position[1] - text_height - 5),
-            (position[0] + text_width + 10, position[1] - text_height - 5 + text_height + 10 + self.tf),
-            color,
-            -1,
-        )
-        # Draw text
+        ((text_width, text_height), _) = cv2.getTextSize(display_text, 0, fontScale=self.sf, thickness=self.tf)
+        cv2.rectangle(self.im, (position[0], position[1] - text_height - 5), (position[0] + text_width + 10, position[1] - text_height - 5 + text_height + 10 + self.tf), color, -1)
         cv2.putText(self.im, display_text, position, 0, self.sf, txt_color, self.tf)
-
         return text_height
 
-    def plot_angle_and_count_and_stage(
-        self,
-        angle_text: str,
-        count_text: str,
-        stage_text: str,
-        center_kpt: list[int],
-        color: tuple[int, int, int] = (104, 31, 17),
-        txt_color: tuple[int, int, int] = (255, 255, 255),
-    ):
+    def plot_angle_and_count_and_stage(self, angle_text, count_text, stage_text, center_kpt, color=(104, 31, 17), txt_color=(255, 255, 255)):
         """Plot the pose angle, count value, and step stage for workout monitoring.
 
         Args:
@@ -581,27 +459,12 @@ class SolutionAnnotator(Annotator):
             color (tuple[int, int, int]): Text background color.
             txt_color (tuple[int, int, int]): Text foreground color.
         """
-        # Format text
-        angle_text, count_text, stage_text = f" {angle_text:.2f}", f"Steps : {count_text}", f" {stage_text}"
+        (angle_text, count_text, stage_text) = (f' {angle_text:.2f}', f'Steps : {count_text}', f' {stage_text}')
+        angle_height = self.plot_workout_information(angle_text, (int(center_kpt[0]), int(center_kpt[1])), color, txt_color)
+        count_height = self.plot_workout_information(count_text, (int(center_kpt[0]), int(center_kpt[1]) + angle_height + 20), color, txt_color)
+        self.plot_workout_information(stage_text, (int(center_kpt[0]), int(center_kpt[1]) + angle_height + count_height + 40), color, txt_color)
 
-        # Draw angle, count and stage text
-        angle_height = self.plot_workout_information(
-            angle_text, (int(center_kpt[0]), int(center_kpt[1])), color, txt_color
-        )
-        count_height = self.plot_workout_information(
-            count_text, (int(center_kpt[0]), int(center_kpt[1]) + angle_height + 20), color, txt_color
-        )
-        self.plot_workout_information(
-            stage_text, (int(center_kpt[0]), int(center_kpt[1]) + angle_height + count_height + 40), color, txt_color
-        )
-
-    def plot_distance_and_line(
-        self,
-        pixels_distance: float,
-        centroids: list[tuple[int, int]],
-        line_color: tuple[int, int, int] = (104, 31, 17),
-        centroid_color: tuple[int, int, int] = (255, 0, 255),
-    ):
+    def plot_distance_and_line(self, pixels_distance, centroids, line_color=(104, 31, 17), centroid_color=(255, 0, 255)):
         """Plot the distance and line between two centroids on the frame.
 
         Args:
@@ -610,40 +473,16 @@ class SolutionAnnotator(Annotator):
             line_color (tuple[int, int, int]): Distance line color.
             centroid_color (tuple[int, int, int]): Bounding box centroid color.
         """
-        # Get the text size
-        text = f"Pixels Distance: {pixels_distance:.2f}"
-        (text_width_m, text_height_m), _ = cv2.getTextSize(text, 0, self.sf, self.tf)
-
-        # Define corners with 10-pixel margin and draw rectangle
+        text = f'Pixels Distance: {pixels_distance:.2f}'
+        ((text_width_m, text_height_m), _) = cv2.getTextSize(text, 0, self.sf, self.tf)
         cv2.rectangle(self.im, (15, 25), (15 + text_width_m + 20, 25 + text_height_m + 20), line_color, -1)
-
-        # Calculate the position for the text with a 10-pixel margin and draw text
         text_position = (25, 25 + text_height_m + 10)
-        cv2.putText(
-            self.im,
-            text,
-            text_position,
-            0,
-            self.sf,
-            (255, 255, 255),
-            self.tf,
-            cv2.LINE_AA,
-        )
-
+        cv2.putText(self.im, text, text_position, 0, self.sf, (255, 255, 255), self.tf, cv2.LINE_AA)
         cv2.line(self.im, centroids[0], centroids[1], line_color, 3)
         cv2.circle(self.im, centroids[0], 6, centroid_color, -1)
         cv2.circle(self.im, centroids[1], 6, centroid_color, -1)
 
-    def display_objects_labels(
-        self,
-        im0: np.ndarray,
-        text: str,
-        txt_color: tuple[int, int, int],
-        bg_color: tuple[int, int, int],
-        x_center: float,
-        y_center: float,
-        margin: int,
-    ):
+    def display_objects_labels(self, im0, text, txt_color, bg_color, x_center, y_center, margin):
         """Display the bounding boxes labels in parking management app.
 
         Args:
@@ -658,38 +497,14 @@ class SolutionAnnotator(Annotator):
         text_size = cv2.getTextSize(text, 0, fontScale=self.sf, thickness=self.tf)[0]
         text_x = x_center - text_size[0] // 2
         text_y = y_center + text_size[1] // 2
-
         rect_x1 = text_x - margin
         rect_y1 = text_y - text_size[1] - margin
         rect_x2 = text_x + text_size[0] + margin
         rect_y2 = text_y + margin
-        cv2.rectangle(
-            im0,
-            (int(rect_x1), int(rect_y1)),
-            (int(rect_x2), int(rect_y2)),
-            tuple(map(int, bg_color)),  # Ensure color values are int
-            -1,
-        )
+        cv2.rectangle(im0, (int(rect_x1), int(rect_y1)), (int(rect_x2), int(rect_y2)), tuple(map(int, bg_color)), -1)
+        cv2.putText(im0, text, (int(text_x), int(text_y)), 0, self.sf, tuple(map(int, txt_color)), self.tf, lineType=cv2.LINE_AA)
 
-        cv2.putText(
-            im0,
-            text,
-            (int(text_x), int(text_y)),
-            0,
-            self.sf,
-            tuple(map(int, txt_color)),  # Ensure color values are int
-            self.tf,
-            lineType=cv2.LINE_AA,
-        )
-
-    def sweep_annotator(
-        self,
-        line_x: int = 0,
-        line_y: int = 0,
-        label: str | None = None,
-        color: tuple[int, int, int] = (221, 0, 186),
-        txt_color: tuple[int, int, int] = (255, 255, 255),
-    ):
+    def sweep_annotator(self, line_x=0, line_y=0, label=None, color=(221, 0, 186), txt_color=(255, 255, 255)):
         """Draw a sweep annotation line and an optional label.
 
         Args:
@@ -699,36 +514,13 @@ class SolutionAnnotator(Annotator):
             color (tuple[int, int, int]): BGR color for the line and label background (OpenCV format).
             txt_color (tuple[int, int, int]): BGR color for the label text (OpenCV format).
         """
-        # Draw the sweep line
         cv2.line(self.im, (line_x, 0), (line_x, line_y), color, self.tf * 2)
-
-        # Draw label, if provided
         if label:
-            (text_width, text_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, self.sf, self.tf)
-            cv2.rectangle(
-                self.im,
-                (line_x - text_width // 2 - 10, line_y // 2 - text_height // 2 - 10),
-                (line_x + text_width // 2 + 10, line_y // 2 + text_height // 2 + 10),
-                color,
-                -1,
-            )
-            cv2.putText(
-                self.im,
-                label,
-                (line_x - text_width // 2, line_y // 2 + text_height // 2),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                self.sf,
-                txt_color,
-                self.tf,
-            )
+            ((text_width, text_height), _) = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, self.sf, self.tf)
+            cv2.rectangle(self.im, (line_x - text_width // 2 - 10, line_y // 2 - text_height // 2 - 10), (line_x + text_width // 2 + 10, line_y // 2 + text_height // 2 + 10), color, -1)
+            cv2.putText(self.im, label, (line_x - text_width // 2, line_y // 2 + text_height // 2), cv2.FONT_HERSHEY_SIMPLEX, self.sf, txt_color, self.tf)
 
-    def visioneye(
-        self,
-        box: list[float],
-        center_point: tuple[int, int],
-        color: tuple[int, int, int] = (235, 219, 11),
-        pin_color: tuple[int, int, int] = (255, 0, 255),
-    ):
+    def visioneye(self, box, center_point, color=(235, 219, 11), pin_color=(255, 0, 255)):
         """Perform pinpoint human-vision eye mapping and plotting.
 
         Args:
@@ -737,20 +529,12 @@ class SolutionAnnotator(Annotator):
             color (tuple[int, int, int]): Object centroid and line color.
             pin_color (tuple[int, int, int]): Visioneye point color.
         """
-        center_bbox = int((box[0] + box[2]) / 2), int((box[1] + box[3]) / 2)
+        center_bbox = (int((box[0] + box[2]) / 2), int((box[1] + box[3]) / 2))
         cv2.circle(self.im, center_point, self.tf * 2, pin_color, -1)
         cv2.circle(self.im, center_bbox, self.tf * 2, color, -1)
         cv2.line(self.im, center_point, center_bbox, color, self.tf)
 
-    def adaptive_label(
-        self,
-        box: tuple[float, float, float, float],
-        label: str = "",
-        color: tuple[int, int, int] = (128, 128, 128),
-        txt_color: tuple[int, int, int] = (255, 255, 255),
-        shape: str = "rect",
-        margin: int = 5,
-    ):
+    def adaptive_label(self, box, label='', color=(128, 128, 128), txt_color=(255, 255, 255), shape='rect', margin=5):
         """Draw a label with a background rectangle or circle centered within a given bounding box.
 
         Args:
@@ -761,43 +545,17 @@ class SolutionAnnotator(Annotator):
             shape (str): Label shape. Options: "circle" or "rect".
             margin (int): The margin between the text and the rectangle border.
         """
-        if shape == "circle" and len(label) > 3:
-            LOGGER.warning(f"Length of label is {len(label)}, only first 3 letters will be used for circle annotation.")
+        if shape == 'circle' and len(label) > 3:
+            LOGGER.warning(f'Length of label is {len(label)}, only first 3 letters will be used for circle annotation.')
             label = label[:3]
-
-        x_center, y_center = int((box[0] + box[2]) / 2), int((box[1] + box[3]) / 2)  # Bounding-box center
-        text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, self.sf - 0.15, self.tf)[0]  # Get size of the text
-        text_x, text_y = x_center - text_size[0] // 2, y_center + text_size[1] // 2  # Calculate top-left corner of text
-
-        if shape == "circle":
-            cv2.circle(
-                self.im,
-                (x_center, y_center),
-                int(((text_size[0] ** 2 + text_size[1] ** 2) ** 0.5) / 2) + margin,  # Calculate the radius
-                color,
-                -1,
-            )
+        (x_center, y_center) = (int((box[0] + box[2]) / 2), int((box[1] + box[3]) / 2))
+        text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, self.sf - 0.15, self.tf)[0]
+        (text_x, text_y) = (x_center - text_size[0] // 2, y_center + text_size[1] // 2)
+        if shape == 'circle':
+            cv2.circle(self.im, (x_center, y_center), int((text_size[0] ** 2 + text_size[1] ** 2) ** 0.5 / 2) + margin, color, -1)
         else:
-            cv2.rectangle(
-                self.im,
-                (text_x - margin, text_y - text_size[1] - margin),  # Calculate coordinates of the rectangle
-                (text_x + text_size[0] + margin, text_y + margin),  # Calculate coordinates of the rectangle
-                color,
-                -1,
-            )
-
-        # Draw the text on top of the rectangle
-        cv2.putText(
-            self.im,
-            label,
-            (text_x, text_y),  # Calculate top-left corner of the text
-            cv2.FONT_HERSHEY_SIMPLEX,
-            self.sf - 0.15,
-            self.get_txt_color(color, txt_color),
-            self.tf,
-            lineType=cv2.LINE_AA,
-        )
-
+            cv2.rectangle(self.im, (text_x - margin, text_y - text_size[1] - margin), (text_x + text_size[0] + margin, text_y + margin), color, -1)
+        cv2.putText(self.im, label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, self.sf - 0.15, self.get_txt_color(color, txt_color), self.tf, lineType=cv2.LINE_AA)
 
 class SolutionResults:
     """A class to encapsulate the results of Ultralytics Solutions.
@@ -846,22 +604,16 @@ class SolutionResults:
         self.email_sent = False
         self.total_tracks = 0
         self.region_counts = {}
-        self.speed_dict = {}  # for speed estimation
+        self.speed_dict = {}
         self.total_crop_objects = 0
         self.speed = {}
-
-        # Override with user-defined values
         self.__dict__.update(kwargs)
 
-    def __str__(self) -> str:
+    def __str__(self):
         """Return a formatted string representation of the SolutionResults object.
 
         Returns:
             (str): A string representation listing non-null attributes.
         """
-        attrs = {
-            k: v
-            for k, v in self.__dict__.items()
-            if k != "plot_im" and v not in [None, {}, 0, 0.0, False]  # Exclude `plot_im` explicitly
-        }
-        return ", ".join(f"{k}={v}" for k, v in attrs.items())
+        attrs = {k: v for (k, v) in self.__dict__.items() if k != 'plot_im' and v not in [None, {}, 0, 0.0, False]}
+        return ', '.join((f'{k}={v}' for (k, v) in attrs.items()))

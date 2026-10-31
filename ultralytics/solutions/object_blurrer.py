@@ -1,13 +1,8 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 from typing import Any
-
 import cv2
-
 from ultralytics.solutions.solutions import BaseSolution, SolutionAnnotator, SolutionResults
 from ultralytics.utils import LOGGER
 from ultralytics.utils.plotting import colors
-
 
 class ObjectBlurrer(BaseSolution):
     """A class to manage the blurring of detected objects in a real-time video stream.
@@ -32,7 +27,7 @@ class ObjectBlurrer(BaseSolution):
         >>> print(f"Total blurred objects: {processed_results.total_tracks}")
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """Initialize the ObjectBlurrer class for applying a blur effect to objects detected in video streams or images.
 
         Args:
@@ -40,13 +35,13 @@ class ObjectBlurrer(BaseSolution):
                 - blur_ratio (float): Intensity of the blur effect (0.1-1.0, default=0.5).
         """
         super().__init__(**kwargs)
-        blur_ratio = self.CFG["blur_ratio"]
+        blur_ratio = self.CFG['blur_ratio']
         if blur_ratio < 0.1:
-            LOGGER.warning("blur ratio cannot be less than 0.1, updating it to default value 0.5")
+            LOGGER.warning('blur ratio cannot be less than 0.1, updating it to default value 0.5')
             blur_ratio = 0.5
         self.blur_ratio = int(blur_ratio * 100)
 
-    def process(self, im0) -> SolutionResults:
+    def process(self, im0):
         """Apply a blurring effect to detected objects in the input image.
 
         This method extracts tracking information, applies blur to regions corresponding to detected objects, and
@@ -66,26 +61,17 @@ class ObjectBlurrer(BaseSolution):
             >>> results = blurrer.process(frame)
             >>> print(f"Blurred {results.total_tracks} objects")
         """
-        self.extract_tracks(im0)  # Extract tracks
+        self.extract_tracks(im0)
         annotator = SolutionAnnotator(im0, self.line_width)
-
-        # Iterate over bounding boxes and classes
-        h, w = im0.shape[:2]
-        for box, cls, conf in zip(self.boxes, self.clss, self.confs):
-            x0, y0, x1, y1 = map(int, self.get_enclosing_box(box))
-            x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, w), min(y1, h)  # clip OBB corners to image bounds
-            if x0 >= x1 or y0 >= y1:  # box fully outside the frame clips to an empty ROI, cv2.blur would assert
+        (h, w) = im0.shape[:2]
+        for (box, cls, conf) in zip(self.boxes, self.clss, self.confs):
+            (x0, y0, x1, y1) = map(int, self.get_enclosing_box(box))
+            (x0, y0, x1, y1) = (max(x0, 0), max(y0, 0), min(x1, w), min(y1, h))
+            if x0 >= x1 or y0 >= y1:
                 continue
-            # Crop and blur the detected object
             blur_obj = cv2.blur(im0[y0:y1, x0:x1], (self.blur_ratio, self.blur_ratio))
-            # Update the blurred area in the original image
             im0[y0:y1, x0:x1] = blur_obj
-            annotator.box_label(
-                box, label=self.adjust_box_label(cls, conf), color=colors(cls, True)
-            )  # Annotate bounding box
-
+            annotator.box_label(box, label=self.adjust_box_label(cls, conf), color=colors(cls, True))
         plot_im = annotator.result()
-        self.display_output(plot_im)  # Display the output using the base class function
-
-        # Return a SolutionResults
+        self.display_output(plot_im)
         return SolutionResults(plot_im=plot_im, total_tracks=len(self.track_ids))

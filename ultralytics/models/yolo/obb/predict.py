@@ -1,13 +1,7 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 import torch
-
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo.detect.predict import DetectionPredictor
 from ultralytics.utils import DEFAULT_CFG, ops
-
 
 class OBBPredictor(DetectionPredictor):
     """A class extending the DetectionPredictor class for prediction based on an Oriented Bounding Box (OBB) model.
@@ -27,7 +21,7 @@ class OBBPredictor(DetectionPredictor):
         >>> predictor.predict_cli()
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks: dict | None = None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize OBBPredictor with optional model and data configuration overrides.
 
         Args:
@@ -36,7 +30,7 @@ class OBBPredictor(DetectionPredictor):
             _callbacks (dict, optional): Dictionary of callback functions to be invoked during prediction.
         """
         super().__init__(cfg, overrides, _callbacks)
-        self.args.task = "obb"
+        self.args.task = 'obb'
 
     def construct_result(self, pred, img, orig_img, img_path):
         """Construct the result object from the prediction.

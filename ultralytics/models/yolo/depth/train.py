@@ -1,18 +1,12 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """Depth estimation trainer for YOLO models."""
-
-from __future__ import annotations
-
 from copy import copy
 from pathlib import Path
 from typing import Any
-
 from ultralytics.models import yolo
 from ultralytics.models.yolo.detect import DetectionTrainer
 from ultralytics.nn.tasks import DepthModel
 from ultralytics.utils import DEFAULT_CFG, LOGGER, RANK
 from ultralytics.utils.plotting import plt_settings
-
 
 class DepthTrainer(DetectionTrainer):
     """Trainer for YOLO depth estimation models.
@@ -26,38 +20,32 @@ class DepthTrainer(DetectionTrainer):
         >>> trainer.train()
     """
 
-    def __init__(
-        self, cfg=DEFAULT_CFG, overrides: dict[str, Any] | None = None, _callbacks: dict | None = None
-    ) -> None:
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize DepthTrainer."""
         if overrides is None:
             overrides = {}
-        overrides["task"] = "depth"
+        overrides['task'] = 'depth'
         super().__init__(cfg, overrides, _callbacks)
 
-    def get_model(self, cfg: str | None = None, weights: str | None = None, verbose: bool = True) -> DepthModel:
+    def get_model(self, cfg=None, weights=None, verbose=True):
         """Return a DepthModel initialized with the given config and weights."""
-        model = DepthModel(
-            cfg, ch=self.data.get("channels", 3), nc=self.data["nc"], verbose=verbose and RANK in {-1, 0}
-        )
+        model = DepthModel(cfg, ch=self.data.get('channels', 3), nc=self.data['nc'], verbose=verbose and RANK in {-1, 0})
         if weights:
             model.load(weights)
         return model
 
-    def preprocess_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
+    def preprocess_batch(self, batch):
         """Preprocess batch: normalize images and keep depth as float32."""
         batch = super().preprocess_batch(batch)
-        batch["depth"] = batch["depth"].float()
+        batch['depth'] = batch['depth'].float()
         return batch
 
-    def get_validator(self) -> yolo.depth.DepthValidator:
+    def get_validator(self):
         """Return a DepthValidator for model validation."""
-        return yolo.depth.DepthValidator(
-            self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
-        )
+        return yolo.depth.DepthValidator(self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks)
 
     @plt_settings()
-    def plot_training_labels(self) -> None:
+    def plot_training_labels(self):
         """Plot the training-set GT depth distribution to ``labels.jpg``.
 
         The depth analog of the detection/semantic label plots. The inherited DetectionTrainer
@@ -68,17 +56,15 @@ class DepthTrainer(DetectionTrainer):
         """
         import matplotlib.pyplot as plt
         import numpy as np
-
         LOGGER.info(f"Plotting labels to {self.save_dir / 'labels.jpg'}...")
         dataset = self.train_loader.dataset
         n = len(dataset.im_files)
         if n == 0:
-            LOGGER.warning("No depth maps found, skipping label plot.")
+            LOGGER.warning('No depth maps found, skipping label plot.')
             return
-
         sample_size = min(1000, n)
         indices = np.linspace(0, n - 1, sample_size).astype(int)
-        per_map_cap = max(1, 1_000_000 // sample_size)  # bound total memory to ~1M values
+        per_map_cap = max(1, 1000000 // sample_size)
         values = []
         for idx in indices:
             d = dataset._load_depth(idx)
@@ -87,47 +73,34 @@ class DepthTrainer(DetectionTrainer):
             v = d[d > 0].ravel()
             if v.size == 0:
                 continue
-            if v.size > per_map_cap:  # uniform stride keeps the spatial distribution unbiased
+            if v.size > per_map_cap:
                 v = v[np.linspace(0, v.size - 1, per_map_cap).astype(int)]
             values.append(v)
-
         if not values:
-            LOGGER.warning("No valid depth values found, skipping label plot.")
+            LOGGER.warning('No valid depth values found, skipping label plot.')
             return
-
         values = np.concatenate(values)
-        vmin, vmax = float(values.min()), float(np.percentile(values, 99.5))
-        mean, median, std = float(values.mean()), float(np.median(values)), float(values.std())
-
-        _, ax = plt.subplots(1, 1, figsize=(8, 6), tight_layout=True)
-        ax.hist(values, bins=100, range=(vmin, max(vmax, vmin + 1e-6)), color="#3b7dd8")
-        ax.axvline(mean, color="#d8643b", linestyle="--", linewidth=1.5, label=f"mean {mean:.2f} m")
-        ax.axvline(median, color="#3bd86b", linestyle="--", linewidth=1.5, label=f"median {median:.2f} m")
-        ax.set_xlabel("Depth (m)")
-        ax.set_ylabel("Pixels")
-        ax.set_title("Training Labels Depth Distribution")
-        ax.legend(loc="upper right", frameon=False)
-        stats = f"images: {sample_size}\nmin: {vmin:.2f} m\nmax: {values.max():.2f} m\nstd: {std:.2f} m"
-        ax.text(
-            0.98,
-            0.7,
-            stats,
-            transform=ax.transAxes,
-            ha="right",
-            va="top",
-            fontsize=9,
-            bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.6, "edgecolor": "none"},
-        )
+        (vmin, vmax) = (float(values.min()), float(np.percentile(values, 99.5)))
+        (mean, median, std) = (float(values.mean()), float(np.median(values)), float(values.std()))
+        (_, ax) = plt.subplots(1, 1, figsize=(8, 6), tight_layout=True)
+        ax.hist(values, bins=100, range=(vmin, max(vmax, vmin + 1e-06)), color='#3b7dd8')
+        ax.axvline(mean, color='#d8643b', linestyle='--', linewidth=1.5, label=f'mean {mean:.2f} m')
+        ax.axvline(median, color='#3bd86b', linestyle='--', linewidth=1.5, label=f'median {median:.2f} m')
+        ax.set_xlabel('Depth (m)')
+        ax.set_ylabel('Pixels')
+        ax.set_title('Training Labels Depth Distribution')
+        ax.legend(loc='upper right', frameon=False)
+        stats = f'images: {sample_size}\nmin: {vmin:.2f} m\nmax: {values.max():.2f} m\nstd: {std:.2f} m'
+        ax.text(0.98, 0.7, stats, transform=ax.transAxes, ha='right', va='top', fontsize=9, bbox={'boxstyle': 'round', 'facecolor': 'white', 'alpha': 0.6, 'edgecolor': 'none'})
         for spine in ax.spines.values():
             spine.set_visible(False)
-
-        fname = self.save_dir / "labels.jpg"
+        fname = self.save_dir / 'labels.jpg'
         plt.savefig(fname, dpi=200)
         plt.close()
         if self.on_plot:
             self.on_plot(fname)
 
-    def final_eval(self) -> None:
+    def final_eval(self):
         """Run the standard final evaluation, then calibrate the saved checkpoints.
 
         After training, fits the scale-only log-affine (``cal_a``/``cal_b``) on the validation
@@ -140,34 +113,20 @@ class DepthTrainer(DetectionTrainer):
             return
         try:
             from .calibrate import calibrate_checkpoint
-
-            LOGGER.info("Calibrating depth output scale on the validation set...")
+            LOGGER.info('Calibrating depth output scale on the validation set...')
             plot_ckpt = self.best if self.best.exists() else self.last
             for ckpt in (self.best, self.last):
                 if ckpt.exists():
                     plot_dir = self.save_dir if self.args.plots and ckpt == plot_ckpt else None
-                    validation_path = self.data.get("val") or self.data.get("test")
+                    validation_path = self.data.get('val') or self.data.get('test')
                     validation_split = None
                     if isinstance(validation_path, (str, Path)):
                         try:
-                            validation_split = (
-                                Path(validation_path)
-                                .resolve()
-                                .relative_to(Path(self.data["path"]).resolve())
-                                .as_posix()
-                            )
+                            validation_split = Path(validation_path).resolve().relative_to(Path(self.data['path']).resolve()).as_posix()
                         except ValueError:
-                            pass  # External validation paths have no portable dataset-root-relative identifier.
-                    provenance = calibrate_checkpoint(
-                        ckpt,
-                        self.test_loader,
-                        self.device,
-                        plot_dir=plot_dir,
-                        dataset_hash=self.data.get("hash"),
-                        validation_split=validation_split,
-                        max_depth=self.data.get("max_depth") or 100.0,
-                    )
+                            pass
+                    provenance = calibrate_checkpoint(ckpt, self.test_loader, self.device, plot_dir=plot_dir, dataset_hash=self.data.get('hash'), validation_split=validation_split, max_depth=self.data.get('max_depth') or 100.0)
                     if ckpt == plot_ckpt and provenance is not None:
                         self.depth_calibration = provenance
         except Exception as e:
-            LOGGER.warning(f"Calibration skipped ({type(e).__name__}: {e}); checkpoints left uncalibrated.")
+            LOGGER.warning(f'Calibration skipped ({type(e).__name__}: {e}); checkpoints left uncalibrated.')

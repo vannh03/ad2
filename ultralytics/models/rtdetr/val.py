@@ -1,19 +1,11 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
-
 import torch
-
 from ultralytics.data import YOLODataset
 from ultralytics.data.utils import get_split_fraction
 from ultralytics.models.yolo.detect import DetectionValidator
 from ultralytics.utils import colorstr, ops
-
-__all__ = ("RTDETRValidator",)  # tuple or list
-
+__all__ = ('RTDETRValidator',)
 
 class RTDETRDataset(YOLODataset):
     """Real-Time DEtection TRansformer (RT-DETR) dataset class extending the base YOLODataset class.
@@ -70,7 +62,6 @@ class RTDETRDataset(YOLODataset):
         """
         return super().load_image(i=i, rect_mode=rect_mode)
 
-
 class RTDETRValidator(DetectionValidator):
     """RTDETRValidator extends the DetectionValidator class to provide validation capabilities specifically tailored for
     the RT-DETR (Real-Time DETR) object detection model.
@@ -97,7 +88,7 @@ class RTDETRValidator(DetectionValidator):
         For further details on the attributes and methods, refer to the parent DetectionValidator class.
     """
 
-    def build_dataset(self, img_path, mode="val", batch=None):
+    def build_dataset(self, img_path, mode='val', batch=None):
         """Build an RTDETR Dataset.
 
         Args:
@@ -109,30 +100,13 @@ class RTDETRValidator(DetectionValidator):
         Returns:
             (RTDETRDataset): Dataset configured for RT-DETR validation.
         """
-        return RTDETRDataset(
-            img_path=img_path,
-            imgsz=self.args.imgsz,
-            batch_size=batch,
-            augment=False,  # no augmentation
-            hyp=self.args,
-            rect=False,  # no rect
-            cache=self.args.cache or None,
-            single_cls=self.args.single_cls or False,
-            prefix=colorstr(f"{mode}: "),
-            classes=self.args.classes,
-            data=self.data,
-            fraction=1.0
-            if self.data.get("complete")
-            else get_split_fraction(self.args.fraction, self.args.split or "val"),
-        )
+        return RTDETRDataset(img_path=img_path, imgsz=self.args.imgsz, batch_size=batch, augment=False, hyp=self.args, rect=False, cache=self.args.cache or None, single_cls=self.args.single_cls or False, prefix=colorstr(f'{mode}: '), classes=self.args.classes, data=self.data, fraction=1.0 if self.data.get('complete') else get_split_fraction(self.args.fraction, self.args.split or 'val'))
 
-    def scale_preds(self, predn: dict[str, torch.Tensor], pbatch: dict[str, Any]) -> dict[str, torch.Tensor]:
+    def scale_preds(self, predn, pbatch):
         """Return predictions unchanged as RT-DETR handles scaling in postprocessing."""
         return predn
 
-    def postprocess(
-        self, preds: torch.Tensor | list[torch.Tensor] | tuple[torch.Tensor]
-    ) -> list[dict[str, torch.Tensor]]:
+    def postprocess(self, preds):
         """Apply post-processing to prediction outputs.
 
         Top-k selection is already performed inside the decoder head. This method converts normalized xywh
@@ -150,18 +124,13 @@ class RTDETRValidator(DetectionValidator):
         """
         if isinstance(preds, (list, tuple)):
             preds = preds[0]
-
-        bboxes, scores, labels = preds.split((4, 1, 1), dim=-1)
+        (bboxes, scores, labels) = preds.split((4, 1, 1), dim=-1)
         bboxes = ops.xywh2xyxy(bboxes) * self.args.imgsz
-        scores, labels = scores.squeeze(-1), labels.squeeze(-1)
-        masks = [(score > self.args.conf).nonzero().squeeze(1)[: self.args.max_det] for score in scores]
+        (scores, labels) = (scores.squeeze(-1), labels.squeeze(-1))
+        masks = [(score > self.args.conf).nonzero().squeeze(1)[:self.args.max_det] for score in scores]
+        return [{'bboxes': bbox[m], 'conf': score[m], 'cls': label[m]} for (bbox, score, label, m) in zip(bboxes, scores, labels, masks)]
 
-        return [
-            {"bboxes": bbox[m], "conf": score[m], "cls": label[m]}
-            for bbox, score, label, m in zip(bboxes, scores, labels, masks)
-        ]
-
-    def pred_to_json(self, predn: dict[str, torch.Tensor], pbatch: dict[str, Any]) -> None:
+    def pred_to_json(self, predn, pbatch):
         """Serialize YOLO predictions to COCO json format.
 
         Args:
@@ -169,21 +138,13 @@ class RTDETRValidator(DetectionValidator):
                 bounding box coordinates, confidence scores, and class predictions.
             pbatch (dict[str, Any]): Batch dictionary containing 'imgsz', 'ori_shape', 'ratio_pad', and 'im_file'.
         """
-        path = Path(pbatch["im_file"])
+        path = Path(pbatch['im_file'])
         stem = path.stem
         image_id = int(stem) if stem.isnumeric() else stem
-        box = predn["bboxes"].clone()
-        box[..., [0, 2]] *= pbatch["ori_shape"][1] / self.args.imgsz  # native-space pred
-        box[..., [1, 3]] *= pbatch["ori_shape"][0] / self.args.imgsz  # native-space pred
-        box = ops.xyxy2xywh(box)  # xywh
-        box[:, :2] -= box[:, 2:] / 2  # xy center to top-left corner
-        for b, s, c in zip(box.tolist(), predn["conf"].tolist(), predn["cls"].tolist()):
-            self.jdict.append(
-                {
-                    "image_id": image_id,
-                    "file_name": path.name,
-                    "category_id": self.class_map[int(c)],
-                    "bbox": [round(x, 3) for x in b],
-                    "score": round(s, 5),
-                }
-            )
+        box = predn['bboxes'].clone()
+        box[..., [0, 2]] *= pbatch['ori_shape'][1] / self.args.imgsz
+        box[..., [1, 3]] *= pbatch['ori_shape'][0] / self.args.imgsz
+        box = ops.xyxy2xywh(box)
+        box[:, :2] -= box[:, 2:] / 2
+        for (b, s, c) in zip(box.tolist(), predn['conf'].tolist(), predn['cls'].tolist()):
+            self.jdict.append({'image_id': image_id, 'file_name': path.name, 'category_id': self.class_map[int(c)], 'bbox': [round(x, 3) for x in b], 'score': round(s, 5)})

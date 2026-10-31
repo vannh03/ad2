@@ -1,25 +1,9 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
-
 import torch
-
 from ultralytics.utils import LOGGER
 
-
-def torch2openvino(
-    model: torch.nn.Module,
-    im: torch.Tensor | list[torch.Tensor] | tuple[torch.Tensor, ...],
-    output_dir: Path | str | None = None,
-    dynamic: bool = False,
-    quantize: int | str | None = None,
-    calibration_dataset: Any | None = None,
-    int8_detect: bool = False,
-    prefix: str = "",
-) -> Any:
+def torch2openvino(model, im, output_dir=None, dynamic=False, quantize=None, calibration_dataset=None, int8_detect=False, prefix=''):
     """Export a PyTorch model to OpenVINO format with optional INT8 quantization.
 
     Args:
@@ -36,44 +20,22 @@ def torch2openvino(
         (ov.Model): The converted OpenVINO model.
     """
     import openvino as ov
-
-    LOGGER.info(f"\n{prefix} starting export with openvino {ov.__version__}...")
-
+    LOGGER.info(f'\n{prefix} starting export with openvino {ov.__version__}...')
     input_shape = [i.shape for i in im] if isinstance(im, (list, tuple)) else im.shape
-    # Hand OpenVINO an already-traced ScriptModule (torchscript/coreml exports trace the same way), not a raw
-    # nn.Module, so it doesn't re-trace internally with check_trace=True - that re-trace-and-diff sanity check is
-    # non-deterministic on NMS models and fails with "Graphs differed across invocations!". check_trace=False skips
-    # the same check on our own trace.
     ts = torch.jit.trace(model, im, strict=False, check_trace=False)
     ov_model = ov.convert_model(ts, input=None if dynamic else input_shape, example_input=im)
     if quantize == 8:
         import nncf
-
         ignored_scope = None
         if int8_detect:
             operations = ov_model.get_ordered_ops()
-            sigmoid_names = [op.get_friendly_name() for op in operations if op.get_type_name() == "Sigmoid"]
-            head_scope = sigmoid_names[-1].split("/", 1)[0]
-            ignored_scope = nncf.IgnoredScope(
-                names=[
-                    op.get_friendly_name()
-                    for op in operations
-                    if op.get_type_name() == "Sigmoid"
-                    or op.get_friendly_name().startswith((f"{head_scope}/", f"{head_scope}.dfl"))
-                ]
-            )
-        ov_model = nncf.quantize(
-            model=ov_model,
-            calibration_dataset=calibration_dataset,
-            preset=nncf.QuantizationPreset.MIXED,
-            # Calibrate on the full dataset like other INT8 backends, not nncf's 300-batch default
-            subset_size=calibration_dataset.get_length() or 300,
-            ignored_scope=ignored_scope,
-        )
-
+            sigmoid_names = [op.get_friendly_name() for op in operations if op.get_type_name() == 'Sigmoid']
+            head_scope = sigmoid_names[-1].split('/', 1)[0]
+            ignored_scope = nncf.IgnoredScope(names=[op.get_friendly_name() for op in operations if op.get_type_name() == 'Sigmoid' or op.get_friendly_name().startswith((f'{head_scope}/', f'{head_scope}.dfl'))])
+        ov_model = nncf.quantize(model=ov_model, calibration_dataset=calibration_dataset, preset=nncf.QuantizationPreset.MIXED, subset_size=calibration_dataset.get_length() or 300, ignored_scope=ignored_scope)
     if output_dir is not None:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        output_file = output_dir / "model.xml"
+        output_file = output_dir / 'model.xml'
         ov.save_model(ov_model, output_file, compress_to_fp16=quantize == 16)
     return ov_model

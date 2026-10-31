@@ -1,33 +1,15 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
-
 import numpy as np
 import torch
-
 from ultralytics.cfg import get_cfg
 from ultralytics.data.build import load_inference_source
 from ultralytics.engine.model import Model
 from ultralytics.models import yolo
 from ultralytics.nn.autobackend import check_class_names
 from ultralytics.nn.backends.base import BaseBackend
-from ultralytics.nn.tasks import (
-    ClassificationModel,
-    DepthModel,
-    DetectionModel,
-    OBBModel,
-    PoseModel,
-    SegmentationModel,
-    SemanticSegmentationModel,
-    WorldModel,
-    YOLOEModel,
-    YOLOESegModel,
-)
+from ultralytics.nn.tasks import ClassificationModel, DepthModel, DetectionModel, OBBModel, PoseModel, SegmentationModel, SemanticSegmentationModel, WorldModel, YOLOEModel, YOLOESegModel
 from ultralytics.utils import ROOT, YAML
-
 
 class YOLO(Model):
     """YOLO (You Only Look Once) object detection model.
@@ -57,7 +39,7 @@ class YOLO(Model):
         >>> model = YOLO("yolo26n.yaml")
     """
 
-    def __init__(self, model: str | Path = "yolo26n.pt", task: str | None = None, verbose: bool = False):
+    def __init__(self, model='yolo26n.pt', task=None, verbose=False):
         """Initialize a YOLO model.
 
         This constructor initializes a YOLO model, automatically switching to specialized model types (YOLOWorld or
@@ -69,80 +51,34 @@ class YOLO(Model):
                 'pose', 'obb'. Defaults to auto-detection based on model.
             verbose (bool): Display model info on load.
         """
-        path = Path(model if isinstance(model, (str, Path)) else "")
-        if "-world" in path.stem and path.suffix in {".pt", ".yaml", ".yml"}:  # if YOLOWorld PyTorch model
+        path = Path(model if isinstance(model, (str, Path)) else '')
+        if '-world' in path.stem and path.suffix in {'.pt', '.yaml', '.yml'}:
             new_instance = YOLOWorld(path, verbose=verbose)
             self.__class__ = type(new_instance)
             self.__dict__ = new_instance.__dict__
-        elif "yoloe" in path.stem and path.suffix in {".pt", ".yaml", ".yml"}:  # if YOLOE PyTorch model
+        elif 'yoloe' in path.stem and path.suffix in {'.pt', '.yaml', '.yml'}:
             new_instance = YOLOE(path, task=task, verbose=verbose)
             self.__class__ = type(new_instance)
             self.__dict__ = new_instance.__dict__
         else:
-            # Continue with default YOLO initialization
             super().__init__(model=model, task=task, verbose=verbose)
-            head = self.model.model[-1]._get_name() if hasattr(self.model, "model") else ""
-            if not head and isinstance(self.model, (str, Path)):  # an exported model keeps its head name in metadata
-                head = BaseBackend.read_metadata(self.model).get("head", "")
-            if "RTDETR" in head:  # if RTDETR head
+            head = self.model.model[-1]._get_name() if hasattr(self.model, 'model') else ''
+            if not head and isinstance(self.model, (str, Path)):
+                head = BaseBackend.read_metadata(self.model).get('head', '')
+            if 'RTDETR' in head:
                 from ultralytics import RTDETR
-
                 new_instance = RTDETR(self)
                 self.__class__ = type(new_instance)
                 self.__dict__ = new_instance.__dict__
-            elif isinstance(self.model, WorldModel):  # e.g. `ul://…/yolov8l-worldv2`, no suffix for the filename test
+            elif isinstance(self.model, WorldModel):
                 new_instance = YOLOWorld(self)
                 self.__class__ = type(new_instance)
                 self.__dict__ = new_instance.__dict__
 
     @property
-    def task_map(self) -> dict[str, dict[str, Any]]:
+    def task_map(self):
         """Map head to model, trainer, validator, and predictor classes."""
-        return {
-            "classify": {
-                "model": ClassificationModel,
-                "trainer": yolo.classify.ClassificationTrainer,
-                "validator": yolo.classify.ClassificationValidator,
-                "predictor": yolo.classify.ClassificationPredictor,
-            },
-            "detect": {
-                "model": DetectionModel,
-                "trainer": yolo.detect.DetectionTrainer,
-                "validator": yolo.detect.DetectionValidator,
-                "predictor": yolo.detect.DetectionPredictor,
-            },
-            "segment": {
-                "model": SegmentationModel,
-                "trainer": yolo.segment.SegmentationTrainer,
-                "validator": yolo.segment.SegmentationValidator,
-                "predictor": yolo.segment.SegmentationPredictor,
-            },
-            "pose": {
-                "model": PoseModel,
-                "trainer": yolo.pose.PoseTrainer,
-                "validator": yolo.pose.PoseValidator,
-                "predictor": yolo.pose.PosePredictor,
-            },
-            "obb": {
-                "model": OBBModel,
-                "trainer": yolo.obb.OBBTrainer,
-                "validator": yolo.obb.OBBValidator,
-                "predictor": yolo.obb.OBBPredictor,
-            },
-            "depth": {
-                "model": DepthModel,
-                "trainer": yolo.depth.DepthTrainer,
-                "validator": yolo.depth.DepthValidator,
-                "predictor": yolo.depth.DepthPredictor,
-            },
-            "semantic": {
-                "model": SemanticSegmentationModel,
-                "trainer": yolo.semantic.SemanticSegmentationTrainer,
-                "validator": yolo.semantic.SemanticSegmentationValidator,
-                "predictor": yolo.semantic.SemanticSegmentationPredictor,
-            },
-        }
-
+        return {'classify': {'model': ClassificationModel, 'trainer': yolo.classify.ClassificationTrainer, 'validator': yolo.classify.ClassificationValidator, 'predictor': yolo.classify.ClassificationPredictor}, 'detect': {'model': DetectionModel, 'trainer': yolo.detect.DetectionTrainer, 'validator': yolo.detect.DetectionValidator, 'predictor': yolo.detect.DetectionPredictor}, 'segment': {'model': SegmentationModel, 'trainer': yolo.segment.SegmentationTrainer, 'validator': yolo.segment.SegmentationValidator, 'predictor': yolo.segment.SegmentationPredictor}, 'pose': {'model': PoseModel, 'trainer': yolo.pose.PoseTrainer, 'validator': yolo.pose.PoseValidator, 'predictor': yolo.pose.PosePredictor}, 'obb': {'model': OBBModel, 'trainer': yolo.obb.OBBTrainer, 'validator': yolo.obb.OBBValidator, 'predictor': yolo.obb.OBBPredictor}, 'depth': {'model': DepthModel, 'trainer': yolo.depth.DepthTrainer, 'validator': yolo.depth.DepthValidator, 'predictor': yolo.depth.DepthPredictor}, 'semantic': {'model': SemanticSegmentationModel, 'trainer': yolo.semantic.SemanticSegmentationTrainer, 'validator': yolo.semantic.SemanticSegmentationValidator, 'predictor': yolo.semantic.SemanticSegmentationPredictor}}
 
 class YOLOWorld(Model):
     """YOLO-World object detection model.
@@ -169,7 +105,7 @@ class YOLOWorld(Model):
         >>> model.set_classes(["person", "car", "bicycle"])
     """
 
-    def __init__(self, model: str | Path = "yolov8s-world.pt", verbose: bool = False) -> None:
+    def __init__(self, model='yolov8s-world.pt', verbose=False):
         """Initialize YOLOv8-World model with a pre-trained model file.
 
         Loads a YOLOv8-World model for object detection. If no custom class names are provided, it assigns default COCO
@@ -179,39 +115,27 @@ class YOLOWorld(Model):
             model (str | Path): Path to the pre-trained model file. Supports *.pt and *.yaml formats.
             verbose (bool): If True, prints additional information during initialization.
         """
-        super().__init__(model=model, task="detect", verbose=verbose)
-
-        # Assign default COCO class names when there are no custom names
-        if not hasattr(self.model, "names"):
-            self.model.names = YAML.load(ROOT / "cfg/datasets/coco8.yaml").get("names")
+        super().__init__(model=model, task='detect', verbose=verbose)
+        if not hasattr(self.model, 'names'):
+            self.model.names = YAML.load(ROOT / 'cfg/datasets/coco8.yaml').get('names')
 
     @property
-    def task_map(self) -> dict[str, dict[str, Any]]:
+    def task_map(self):
         """Map head to model, trainer, validator, and predictor classes."""
-        return {
-            "detect": {
-                "model": WorldModel,
-                "validator": yolo.world.WorldValidator,
-                "predictor": yolo.detect.DetectionPredictor,
-                "trainer": yolo.world.WorldTrainer,
-            }
-        }
+        return {'detect': {'model': WorldModel, 'validator': yolo.world.WorldValidator, 'predictor': yolo.detect.DetectionPredictor, 'trainer': yolo.world.WorldTrainer}}
 
-    def set_classes(self, classes: list[str]) -> None:
+    def set_classes(self, classes):
         """Set the model's class names for detection.
 
         Args:
             classes (list[str]): A list of categories i.e. ["person"].
         """
         self.model.set_classes(classes)
-        # Remove background if it's given
-        background = " "
+        background = ' '
         if background in classes:
             classes.remove(background)
         self.model.names = classes
-
         self.predictor = None
-
 
 class YOLOE(Model):
     """YOLOE object detection and segmentation model.
@@ -251,7 +175,7 @@ class YOLOE(Model):
         >>> model.set_vocab(model.get_vocab(names), names)
     """
 
-    def __init__(self, model: str | Path = "yoloe-11s-seg.pt", task: str | None = None, verbose: bool = False) -> None:
+    def __init__(self, model='yoloe-11s-seg.pt', task=None, verbose=False):
         """Initialize YOLOE model with a pre-trained model file.
 
         Args:
@@ -262,22 +186,9 @@ class YOLOE(Model):
         super().__init__(model=model, task=task, verbose=verbose)
 
     @property
-    def task_map(self) -> dict[str, dict[str, Any]]:
+    def task_map(self):
         """Map head to model, trainer, validator, and predictor classes."""
-        return {
-            "detect": {
-                "model": YOLOEModel,
-                "validator": yolo.yoloe.YOLOEDetectValidator,
-                "predictor": yolo.detect.DetectionPredictor,
-                "trainer": yolo.yoloe.YOLOETrainer,
-            },
-            "segment": {
-                "model": YOLOESegModel,
-                "validator": yolo.yoloe.YOLOESegValidator,
-                "predictor": yolo.segment.SegmentationPredictor,
-                "trainer": yolo.yoloe.YOLOESegTrainer,
-            },
-        }
+        return {'detect': {'model': YOLOEModel, 'validator': yolo.yoloe.YOLOEDetectValidator, 'predictor': yolo.detect.DetectionPredictor, 'trainer': yolo.yoloe.YOLOETrainer}, 'segment': {'model': YOLOESegModel, 'validator': yolo.yoloe.YOLOESegValidator, 'predictor': yolo.segment.SegmentationPredictor, 'trainer': yolo.yoloe.YOLOESegTrainer}}
 
     def get_text_pe(self, texts):
         """Get text positional embeddings for the given texts."""
@@ -306,7 +217,7 @@ class YOLOE(Model):
         assert isinstance(self.model, YOLOEModel)
         return self.model.get_visual_pe(img, visual)
 
-    def set_vocab(self, vocab: torch.nn.ModuleList, names: list[str]) -> None:
+    def set_vocab(self, vocab, names):
         """Re-parameterize the model into a prompt-free one over the given class names.
 
         The vocabulary is the fused classification layer `get_vocab` returns for the same names, not the names
@@ -326,40 +237,39 @@ class YOLOE(Model):
         """
         assert isinstance(self.model, YOLOEModel)
         names = check_class_names(names)
-        self.predictor = None  # the delegate destructively re-parameterizes the head
+        self.predictor = None
         self.model.set_vocab(vocab, names=names)
 
     def get_vocab(self, names):
         """Get the vocabulary for the given class names, which become the model's classes as the head is fused."""
         assert isinstance(self.model, YOLOEModel)
-        self.predictor = None  # the delegate destructively fuses the promptable head
+        self.predictor = None
         return self.model.get_vocab(names)
 
-    def set_classes(self, classes: list[str], embeddings: torch.Tensor | None = None) -> None:
+    def set_classes(self, classes, embeddings=None):
         """Set the model's class names and embeddings for detection.
 
         Args:
             classes (list[str]): A list of categories i.e. ["person"].
             embeddings (torch.Tensor, optional): Embeddings corresponding to the classes.
         """
-        # Verify no background class is present
-        assert " " not in classes
+        assert ' ' not in classes
         assert isinstance(self.model, YOLOEModel)
         names = list(self.model.names.values()) if isinstance(self.model.names, dict) else list(self.model.names)
         if embeddings is not None or names != classes:
             if embeddings is None:
-                embeddings = self.get_text_pe(classes)  # generate text embeddings if not provided
+                embeddings = self.get_text_pe(classes)
             self.model.set_classes(classes, embeddings)
             self.predictor = None
 
-    def _prompt_embedding_model(self) -> str:
+    def _prompt_embedding_model(self):
         """Return the checkpoint identifier used to bind prompt embeddings to this model."""
-        source = getattr(self.model, "pt_path", None) or self.ckpt_path
-        source = source if isinstance(source, (str, Path)) else self.model.yaml["yaml_file"]
+        source = getattr(self.model, 'pt_path', None) or self.ckpt_path
+        source = source if isinstance(source, (str, Path)) else self.model.yaml['yaml_file']
         model = Path(source).stem
-        return model[:-4] if model.endswith("-seg") else model
+        return model[:-4] if model.endswith('-seg') else model
 
-    def save_prompt_embeddings(self, file: str | Path) -> Path:
+    def save_prompt_embeddings(self, file):
         """Save the current prompt embeddings and class names to an NPZ file.
 
         Args:
@@ -372,25 +282,19 @@ class YOLOE(Model):
             ValueError: If prompt embeddings have not been set or are invalid.
         """
         assert isinstance(self.model, YOLOEModel)
-        embeddings = getattr(self.model, "pe", None)
+        embeddings = getattr(self.model, 'pe', None)
         if not isinstance(embeddings, torch.Tensor) or embeddings.ndim != 3 or embeddings.shape[0] != 1:
-            raise ValueError("Prompt embeddings must be set before they can be saved.")
+            raise ValueError('Prompt embeddings must be set before they can be saved.')
         names = list(self.model.names.values()) if isinstance(self.model.names, dict) else list(self.model.names)
         if embeddings.shape[1] != len(names) or not torch.isfinite(embeddings).all():
-            raise ValueError("Prompt embeddings must be finite and match the number of class names.")
-
+            raise ValueError('Prompt embeddings must be finite and match the number of class names.')
         file = Path(file)
-        if file.suffix.lower() != ".npz":
+        if file.suffix.lower() != '.npz':
             raise ValueError(f"Prompt embedding file must have an '.npz' suffix, not '{file.suffix}'.")
-        np.savez_compressed(
-            file,
-            embeddings=embeddings.detach().cpu().float().numpy(),
-            names=np.asarray(names, dtype=np.str_),
-            model=np.asarray(self._prompt_embedding_model(), dtype=np.str_),
-        )
+        np.savez_compressed(file, embeddings=embeddings.detach().cpu().float().numpy(), names=np.asarray(names, dtype=np.str_), model=np.asarray(self._prompt_embedding_model(), dtype=np.str_))
         return file
 
-    def load_prompt_embeddings(self, file: str | Path) -> None:
+    def load_prompt_embeddings(self, file):
         """Load prompt embeddings and class names from a model-bound NPZ file.
 
         Args:
@@ -401,34 +305,25 @@ class YOLOE(Model):
         """
         assert isinstance(self.model, YOLOEModel)
         with np.load(file, allow_pickle=False) as data:
-            if set(data.files) != {"embeddings", "names", "model"}:
+            if set(data.files) != {'embeddings', 'names', 'model'}:
                 raise ValueError("Prompt embedding file must contain 'embeddings', 'names', and 'model'.")
-            embeddings, names, model = data["embeddings"], data["names"], data["model"]
-
-        if model.ndim != 0 or model.dtype.kind != "U":
-            raise ValueError("Prompt embedding model identifier must be a scalar string.")
+            (embeddings, names, model) = (data['embeddings'], data['names'], data['model'])
+        if model.ndim != 0 or model.dtype.kind != 'U':
+            raise ValueError('Prompt embedding model identifier must be a scalar string.')
         model_name = str(model.item())
         if model_name != self._prompt_embedding_model():
-            raise ValueError(
-                f"Prompt embeddings for model '{model_name}' cannot be loaded into '{self._prompt_embedding_model()}'."
-            )
-        if names.ndim != 1 or names.dtype.kind != "U":
-            raise ValueError("Prompt embedding class names must be a one-dimensional string array.")
+            raise ValueError(f"Prompt embeddings for model '{model_name}' cannot be loaded into '{self._prompt_embedding_model()}'.")
+        if names.ndim != 1 or names.dtype.kind != 'U':
+            raise ValueError('Prompt embedding class names must be a one-dimensional string array.')
         if embeddings.dtype != np.float32 or embeddings.ndim != 3 or embeddings.shape[0] != 1:
-            raise ValueError("Prompt embeddings must be a float32 array with shape (1, classes, dimensions).")
+            raise ValueError('Prompt embeddings must be a float32 array with shape (1, classes, dimensions).')
         if embeddings.shape[1] != len(names) or embeddings.shape[2] != self.model.model[-1].embed:
-            raise ValueError("Prompt embedding shape does not match the class names or model embedding dimension.")
+            raise ValueError('Prompt embedding shape does not match the class names or model embedding dimension.')
         if not np.isfinite(embeddings).all():
-            raise ValueError("Prompt embeddings must contain only finite values.")
+            raise ValueError('Prompt embeddings must contain only finite values.')
         self.set_classes(names.tolist(), torch.from_numpy(embeddings.copy()).to(next(self.model.parameters()).device))
 
-    def val(
-        self,
-        validator=None,
-        load_vp: bool = False,
-        refer_data: str | None = None,
-        **kwargs,
-    ):
+    def val(self, validator=None, load_vp=False, refer_data=None, **kwargs):
         """Validate the model using text or visual prompts.
 
         Args:
@@ -440,23 +335,14 @@ class YOLOE(Model):
         Returns:
             (dict): Validation statistics containing metrics computed during validation.
         """
-        custom = {"rect": not load_vp}  # method defaults
-        args = {**self.overrides, **custom, **kwargs, "mode": "val"}  # highest priority args on the right
-
-        validator = (validator or self._smart_load("validator"))(args=args, _callbacks=self.callbacks)
+        custom = {'rect': not load_vp}
+        args = {**self.overrides, **custom, **kwargs, 'mode': 'val'}
+        validator = (validator or self._smart_load('validator'))(args=args, _callbacks=self.callbacks)
         validator(model=self.model, load_vp=load_vp, refer_data=refer_data)
         self.metrics = validator.metrics
         return validator.metrics
 
-    def predict(
-        self,
-        source=None,
-        stream: bool = False,
-        visual_prompts: dict[str, np.ndarray | list[np.ndarray]] | None = None,
-        refer_image=None,
-        predictor=yolo.yoloe.YOLOEVPDetectPredictor,
-        **kwargs,
-    ):
+    def predict(self, source=None, stream=False, visual_prompts=None, refer_image=None, predictor=yolo.yoloe.YOLOEVPDetectPredictor, **kwargs):
         """Run prediction on images, videos, directories, streams, etc.
 
         Args:
@@ -485,71 +371,38 @@ class YOLOE(Model):
         """
         visual_prompts = visual_prompts if visual_prompts is not None else {}
         if len(visual_prompts):
-            assert "bboxes" in visual_prompts and "cls" in visual_prompts, (
-                f"Expected 'bboxes' and 'cls' in visual prompts, but got {visual_prompts.keys()}"
-            )
-            bboxes, classes = visual_prompts["bboxes"], visual_prompts["cls"]
-            assert all(hasattr(x, "__len__") and getattr(x, "ndim", 1) > 0 for x in (bboxes, classes)), (
-                "Expected non-scalar 'bboxes' and 'cls' visual prompts"
-            )
-            assert len(bboxes) == len(classes) > 0, "Expected an equal, non-zero number of boxes and classes"
-            nested = yolo.yoloe.YOLOEVPDetectPredictor.is_per_image(visual_prompts)  # one prompt array per image
-            assert not isinstance(source, np.ndarray) or source.ndim != 4, "4-D NumPy sources are not supported"
-            per_image_source = isinstance(source, (list, tuple)) or (
-                isinstance(source, torch.Tensor) and source.ndim == 4
-            )
-            assert not nested or (refer_image is None and per_image_source), (
-                "Expected flat 'bboxes' and 'cls' arrays for a non-sequence source or when refer_image is set"
-            )
+            assert 'bboxes' in visual_prompts and 'cls' in visual_prompts, f"Expected 'bboxes' and 'cls' in visual prompts, but got {visual_prompts.keys()}"
+            (bboxes, classes) = (visual_prompts['bboxes'], visual_prompts['cls'])
+            assert all((hasattr(x, '__len__') and getattr(x, 'ndim', 1) > 0 for x in (bboxes, classes))), "Expected non-scalar 'bboxes' and 'cls' visual prompts"
+            assert len(bboxes) == len(classes) > 0, 'Expected an equal, non-zero number of boxes and classes'
+            nested = yolo.yoloe.YOLOEVPDetectPredictor.is_per_image(visual_prompts)
+            assert not isinstance(source, np.ndarray) or source.ndim != 4, '4-D NumPy sources are not supported'
+            per_image_source = isinstance(source, (list, tuple)) or (isinstance(source, torch.Tensor) and source.ndim == 4)
+            assert not nested or (refer_image is None and per_image_source), "Expected flat 'bboxes' and 'cls' arrays for a non-sequence source or when refer_image is set"
             multi = nested
             pairs = list(zip(bboxes, classes)) if multi else [(bboxes, classes)]
-            assert not multi or len(pairs) == len(source), (
-                f"Expected one prompt per source image, but got {len(pairs)} prompts for {len(source)} images"
-            )
-            assert all(
-                getattr(b, "ndim", 2) == 2
-                and (not multi or b.shape[1:] == (4,))
-                and getattr(c, "ndim", 1) == 1
-                and len(b) == len(c)
-                and all(np.isscalar(x) and not isinstance(x, (str, bytes)) for x in c)
-                for b, c in pairs
-            ), "Expected non-string scalar class indices for each bounding box"
-            per_image = [len(set(c.tolist() if isinstance(c, np.ndarray) else c)) for _, c in pairs]
-            assert all(per_image), "Expected at least one class per image"
+            assert not multi or len(pairs) == len(source), f'Expected one prompt per source image, but got {len(pairs)} prompts for {len(source)} images'
+            assert all((getattr(b, 'ndim', 2) == 2 and (not multi or b.shape[1:] == (4,)) and (getattr(c, 'ndim', 1) == 1) and (len(b) == len(c)) and all((np.isscalar(x) and (not isinstance(x, (str, bytes))) for x in c)) for (b, c) in pairs)), 'Expected non-string scalar class indices for each bounding box'
+            per_image = [len(set(c.tolist() if isinstance(c, np.ndarray) else c)) for (_, c) in pairs]
+            assert all(per_image), 'Expected at least one class per image'
             num_cls = max(per_image)
             if type(self.predictor) is not predictor:
                 args = get_cfg(overrides={**self.overrides, **kwargs})
-                self.predictor = predictor(
-                    overrides={
-                        "task": self.model.task,
-                        "mode": "predict",
-                        "save": False,
-                        "verbose": kwargs.get("verbose", self.overrides.get("verbose", refer_image is None)),
-                        "batch": 1,
-                        "device": args.device,
-                        "quantize": args.quantize,
-                        "imgsz": args.imgsz,
-                    },
-                    _callbacks=self.callbacks,
-                )
-
+                self.predictor = predictor(overrides={'task': self.model.task, 'mode': 'predict', 'save': False, 'verbose': kwargs.get('verbose', self.overrides.get('verbose', refer_image is None)), 'batch': 1, 'device': args.device, 'quantize': args.quantize, 'imgsz': args.imgsz}, _callbacks=self.callbacks)
             self.model.model[-1].nc = num_cls
-            self.model.names = [f"object{i}" for i in range(num_cls)]
+            self.model.names = [f'object{i}' for i in range(num_cls)]
             self.predictor.set_prompts(visual_prompts.copy())
             self.predictor.setup_model(model=self.model, verbose=self.predictor.args.verbose)
-
             if refer_image is None and source is not None:
                 dataset = load_inference_source(source)
-                if dataset.mode in {"video", "stream"}:
-                    # NOTE: set the first frame as refer image for videos/streams inference
+                if dataset.mode in {'video', 'stream'}:
                     refer_image = next(iter(dataset))[1][0]
             if refer_image is not None:
                 vpe = self.predictor.get_vpe(refer_image)
                 self.model.set_classes(self.model.names, vpe)
-                self.task = "segment" if isinstance(self.predictor, yolo.segment.SegmentationPredictor) else "detect"
-                self.predictor = None  # reset predictor
+                self.task = 'segment' if isinstance(self.predictor, yolo.segment.SegmentationPredictor) else 'detect'
+                self.predictor = None
         elif isinstance(self.predictor, yolo.yoloe.YOLOEVPDetectPredictor):
-            self.predictor = None  # reset predictor if no visual prompts
-        self.overrides["agnostic_nms"] = True  # use agnostic nms for YOLOE default
-
+            self.predictor = None
+        self.overrides['agnostic_nms'] = True
         return super().predict(source, stream, **kwargs)

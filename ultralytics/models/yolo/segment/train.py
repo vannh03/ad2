@@ -1,14 +1,8 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from copy import copy
 from pathlib import Path
-
 from ultralytics.models import yolo
 from ultralytics.nn.tasks import SegmentationModel
 from ultralytics.utils import DEFAULT_CFG, RANK
-
 
 class SegmentationTrainer(yolo.detect.DetectionTrainer):
     """A class extending the DetectionTrainer class for training based on a segmentation model.
@@ -26,7 +20,7 @@ class SegmentationTrainer(yolo.detect.DetectionTrainer):
         >>> trainer.train()
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides: dict | None = None, _callbacks: dict | None = None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize a SegmentationTrainer object.
 
         Args:
@@ -36,10 +30,10 @@ class SegmentationTrainer(yolo.detect.DetectionTrainer):
         """
         if overrides is None:
             overrides = {}
-        overrides["task"] = "segment"
+        overrides['task'] = 'segment'
         super().__init__(cfg, overrides, _callbacks)
 
-    def get_model(self, cfg: dict | str | None = None, weights: str | Path | None = None, verbose: bool = True):
+    def get_model(self, cfg=None, weights=None, verbose=True):
         """Initialize and return a SegmentationModel with specified configuration and weights.
 
         Args:
@@ -55,16 +49,11 @@ class SegmentationTrainer(yolo.detect.DetectionTrainer):
             >>> model = trainer.get_model(cfg="yolo26n-seg.yaml")
             >>> model = trainer.get_model(weights="yolo26n-seg.pt", verbose=False)
         """
-        model = self.set_model_names_for_load(
-            SegmentationModel(cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1)
-        )
+        model = self.set_model_names_for_load(SegmentationModel(cfg, nc=self.data['nc'], ch=self.data['channels'], verbose=verbose and RANK == -1))
         if weights:
             model.load(weights)
-
         return model
 
     def get_validator(self):
         """Return an instance of SegmentationValidator for validation of YOLO model."""
-        return yolo.segment.SegmentationValidator(
-            self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks
-        )
+        return yolo.segment.SegmentationValidator(self.test_loader, save_dir=self.save_dir, args=copy(self.args), _callbacks=self.callbacks)

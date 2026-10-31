@@ -1,16 +1,8 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from pathlib import Path
-
 import torch
-
 from ultralytics.utils import LOGGER
 from ultralytics.utils.checks import check_requirements, is_rockchip
-
 from .base import BaseBackend
-
 
 class RKNNBackend(BaseBackend):
     """Rockchip RKNN inference backend for Rockchip NPU hardware.
@@ -19,7 +11,7 @@ class RKNNBackend(BaseBackend):
     Rockchip devices with NPU hardware (e.g., RK3588, RK3566).
     """
 
-    def load_model(self, weight: str | Path) -> None:
+    def load_model(self, weight):
         """Load a Rockchip RKNN model from a .rknn file or model directory.
 
         Args:
@@ -30,28 +22,23 @@ class RKNNBackend(BaseBackend):
             RuntimeError: If model loading or runtime initialization fails.
         """
         if not is_rockchip():
-            raise OSError("RKNN inference is only supported on Rockchip devices.")
-
-        LOGGER.info(f"Loading {weight} for RKNN inference...")
-        check_requirements("rknn-toolkit-lite2")
+            raise OSError('RKNN inference is only supported on Rockchip devices.')
+        LOGGER.info(f'Loading {weight} for RKNN inference...')
+        check_requirements('rknn-toolkit-lite2')
         from rknnlite.api import RKNNLite
-
         w = Path(weight)
         if not w.is_file():
-            w = next(w.rglob("*.rknn"))
-
+            w = next(w.rglob('*.rknn'))
         self.model = RKNNLite()
         ret = self.model.load_rknn(str(w))
         if ret != 0:
-            raise RuntimeError(f"Failed to load RKNN model: {ret}")
-
+            raise RuntimeError(f'Failed to load RKNN model: {ret}')
         ret = self.model.init_runtime()
         if ret != 0:
-            raise RuntimeError(f"Failed to init RKNN runtime: {ret}")
-
+            raise RuntimeError(f'Failed to init RKNN runtime: {ret}')
         self.apply_metadata(self.read_metadata(w))
 
-    def forward(self, im: torch.Tensor) -> list:
+    def forward(self, im):
         """Run inference on the Rockchip NPU.
 
         Args:
@@ -60,22 +47,17 @@ class RKNNBackend(BaseBackend):
         Returns:
             (list): Model predictions as a list of output arrays.
         """
-        h, w = im.shape[1:3]
-        im = (im.cpu().numpy() * 255).astype("uint8")
+        (h, w) = im.shape[1:3]
+        im = (im.cpu().numpy() * 255).astype('uint8')
         im = im if isinstance(im, (list, tuple)) else [im]
         y = self.model.inference(inputs=im)
-        # INT8 exports use input-relative coordinates so a single per-tensor scale preserves class scores.
-        if (
-            self.metadata.get("args", {}).get("quantize") == 8
-            and self.task in {"detect", "segment", "pose", "obb"}
-            and not self.end2end
-        ):
-            kpt_start = 4 + len(self.names)  # pose keypoints follow the box (4) and class-score (nc) channels
+        if self.metadata.get('args', {}).get('quantize') == 8 and self.task in {'detect', 'segment', 'pose', 'obb'} and (not self.end2end):
+            kpt_start = 4 + len(self.names)
             for x in y:
                 if x.ndim == 3:
                     x[:, [0, 2]] *= w
                     x[:, [1, 3]] *= h
-                    if self.task == "pose":
+                    if self.task == 'pose':
                         x[:, kpt_start::3] *= w
-                        x[:, kpt_start + 1 :: 3] *= h
+                        x[:, kpt_start + 1::3] *= h
         return y

@@ -1,4 +1,3 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """
 Check a model's accuracy on a test or val split of a dataset.
 
@@ -27,34 +26,20 @@ Usage - formats:
                      yolo26n.tflite             # LiteRT
                      yolo26n_ascend_model       # Huawei Ascend
 """
-
-from __future__ import annotations
-
 import json
 import time
 from copy import deepcopy
 from pathlib import Path
-
 import numpy as np
 import torch
 import torch.distributed as dist
-
 from ultralytics.cfg import get_cfg, get_save_dir
 from ultralytics.data.utils import check_cls_dataset, check_det_dataset, convert_ndjson_to_yolo_if_needed
 from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.utils import LOCAL_RANK, LOGGER, RANK, TQDM, callbacks, colorstr, emojis
 from ultralytics.utils.checks import check_imgsz
 from ultralytics.utils.ops import Profile, linear_sum_assignment
-from ultralytics.utils.torch_utils import (
-    attempt_compile,
-    autocast,
-    get_torch_device_backend,
-    select_device,
-    smart_inference_mode,
-    torch_distributed_zero_first,
-    unwrap_model,
-)
-
+from ultralytics.utils.torch_utils import attempt_compile, autocast, get_torch_device_backend, select_device, smart_inference_mode, torch_distributed_zero_first, unwrap_model
 
 class BaseValidator:
     """A base class for creating validators.
@@ -107,7 +92,7 @@ class BaseValidator:
         eval_json: Evaluate and return JSON format of prediction statistics.
     """
 
-    def __init__(self, dataloader=None, save_dir=None, args=None, _callbacks: dict | None = None):
+    def __init__(self, dataloader=None, save_dir=None, args=None, _callbacks=None):
         """Initialize a BaseValidator instance.
 
         Args:
@@ -116,8 +101,7 @@ class BaseValidator:
             args (SimpleNamespace, optional): Configuration for the validator.
             _callbacks (dict, optional): Dictionary to store various callback functions.
         """
-        import torchvision  # noqa (import here so torchvision import time not recorded in postprocess time)
-
+        import torchvision
         self.args = get_cfg(overrides=args)
         self.dataloader = dataloader
         self.stride = None
@@ -132,14 +116,12 @@ class BaseValidator:
         self.nc = None
         self.iouv = None
         self.jdict = None
-        self.speed = {"preprocess": 0.0, "inference": 0.0, "loss": 0.0, "postprocess": 0.0}
-
+        self.speed = {'preprocess': 0.0, 'inference': 0.0, 'loss': 0.0, 'postprocess': 0.0}
         self.save_dir = save_dir or get_save_dir(self.args)
-        (self.save_dir / "labels" if self.args.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)
+        (self.save_dir / 'labels' if self.args.save_txt else self.save_dir).mkdir(parents=True, exist_ok=True)
         if self.args.conf is None:
-            self.args.conf = 0.01 if self.args.task == "obb" else 0.001  # reduce OBB val memory usage
+            self.args.conf = 0.01 if self.args.task == 'obb' else 0.001
         self.args.imgsz = check_imgsz(self.args.imgsz, max_dim=1)
-
         self.plots = {}
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
 
@@ -159,155 +141,109 @@ class BaseValidator:
         model = self.get_model(model, trainer, **kwargs)
         augment = self.args.augment and (not self.training)
         if self.training:
-            if hasattr(model, "end2end"):
+            if hasattr(model, 'end2end'):
                 model.end2end = self.args.nms is False
             self.device = trainer.device
             self.data = trainer.data
-            # Keep training validation read-only: inputs may be fp16, but EMA/model weights stay fp32 under autocast.
-            self.args.quantize = 16 if (self.device.type != "cpu" and trainer.amp) else None
+            self.args.quantize = 16 if self.device.type != 'cpu' and trainer.amp else None
             model = model.float()
-            self.loss = {k: torch.zeros_like(v) for k, v in trainer.loss_items.items()}
-            self.args.plots &= trainer.stopper.possible_stop or (trainer.epoch == trainer.epochs - 1)
+            self.loss = {k: torch.zeros_like(v) for (k, v) in trainer.loss_items.items()}
+            self.args.plots &= trainer.stopper.possible_stop or trainer.epoch == trainer.epochs - 1
             model.eval()
         else:
-            if str(self.args.model).endswith(".yaml") and model is None:
-                LOGGER.warning("validating an untrained model YAML will result in 0 mAP.")
+            if str(self.args.model).endswith('.yaml') and model is None:
+                LOGGER.warning('validating an untrained model YAML will result in 0 mAP.')
             callbacks.add_integration_callbacks(self)
             with torch_distributed_zero_first(LOCAL_RANK):
                 self.args.data = convert_ndjson_to_yolo_if_needed(self.args.data, self.args.fraction)
-            device_type = str(self.args.device).split(":", 1)[0]
-            device_type = device_type if device_type in {"npu", "xpu"} else "cuda"
-            model = AutoBackend(
-                model=model or self.args.model,
-                # DDP ranks reuse the device assigned in trainer._setup_ddp()
-                device=select_device(self.args.device)
-                if RANK == -1
-                else torch.device(device_type, get_torch_device_backend(device_type).current_device()),
-                dnn=self.args.dnn,
-                data=self.args.data,
-                fp16=self.args.quantize == 16,
-                channels_last=self.args.channels_last,
-                end2end=self.args.nms is False,
-            )
-            self.device = model.device  # update device
-            self.args.quantize = 16 if model.fp16 else None  # record actual inference precision
-            stride, fmt = model.stride, model.format
-            pt = fmt == "pt"
-            if augment and not model.base_model:
+            device_type = str(self.args.device).split(':', 1)[0]
+            device_type = device_type if device_type in {'npu', 'xpu'} else 'cuda'
+            model = AutoBackend(model=model or self.args.model, device=select_device(self.args.device) if RANK == -1 else torch.device(device_type, get_torch_device_backend(device_type).current_device()), dnn=self.args.dnn, data=self.args.data, fp16=self.args.quantize == 16, channels_last=self.args.channels_last, end2end=self.args.nms is False)
+            self.device = model.device
+            self.args.quantize = 16 if model.fp16 else None
+            (stride, fmt) = (model.stride, model.format)
+            pt = fmt == 'pt'
+            if augment and (not model.base_model):
                 LOGGER.warning(f"'augment' is not supported by this model (format='{fmt}'), ignoring.")
                 augment = False
             imgsz = check_imgsz(self.args.imgsz, stride=stride)
-            if fmt not in {"pt", "torchscript"} and not getattr(model, "dynamic", False):
-                if hasattr(model, "imgsz"):
-                    self.args.imgsz = imgsz = max(model.imgsz)  # reuse square imgsz from export metadata
-                self.args.batch = model.metadata.get("batch", 1)  # export.py models default to batch-size 1
-                LOGGER.info(f"Setting batch={self.args.batch} input of shape ({self.args.batch}, 3, {imgsz}, {imgsz})")
-
-            if self.args.task == "classify":
+            if fmt not in {'pt', 'torchscript'} and (not getattr(model, 'dynamic', False)):
+                if hasattr(model, 'imgsz'):
+                    self.args.imgsz = imgsz = max(model.imgsz)
+                self.args.batch = model.metadata.get('batch', 1)
+                LOGGER.info(f'Setting batch={self.args.batch} input of shape ({self.args.batch}, 3, {imgsz}, {imgsz})')
+            if self.args.task == 'classify':
                 self.data = check_cls_dataset(self.args.data, split=self.args.split)
-            elif str(self.args.data).rsplit(".", 1)[-1] in {"yaml", "yml"} or self.args.task in {
-                "detect",
-                "segment",
-                "pose",
-                "obb",
-                "semantic",
-                "depth",
-            }:
+            elif str(self.args.data).rsplit('.', 1)[-1] in {'yaml', 'yml'} or self.args.task in {'detect', 'segment', 'pose', 'obb', 'semantic', 'depth'}:
                 self.data = check_det_dataset(self.args.data, split=self.args.split)
             else:
                 raise FileNotFoundError(emojis(f"Dataset '{self.args.data}' for task={self.args.task} not found ❌"))
-
-            if self.device.type in {"cpu", "mps"}:
-                self.args.workers = 0  # faster CPU val as time dominated by inference, not dataloading
-            if not (pt or (getattr(model, "dynamic", False) and fmt != "imx")):
+            if self.device.type in {'cpu', 'mps'}:
+                self.args.workers = 0
+            if not (pt or (getattr(model, 'dynamic', False) and fmt != 'imx')):
                 self.args.rect = False
-            self.stride = model.stride  # used in get_dataloader() for padding
+            self.stride = model.stride
             self.dataloader = self.dataloader or self.get_dataloader(self.data.get(self.args.split), self.args.batch)
-
             model.eval()
             if self.args.compile:
                 model = attempt_compile(model, device=self.device, mode=self.args.compile)
-            model.warmup(imgsz=(1 if pt else self.args.batch, self.data["channels"], imgsz, imgsz))  # warmup
-
-        self.run_callbacks("on_val_start")
-        dt = (
-            Profile(device=self.device),
-            Profile(device=self.device),
-            Profile(device=self.device),
-            Profile(device=self.device),
-        )
+            model.warmup(imgsz=(1 if pt else self.args.batch, self.data['channels'], imgsz, imgsz))
+        self.run_callbacks('on_val_start')
+        dt = (Profile(device=self.device), Profile(device=self.device), Profile(device=self.device), Profile(device=self.device))
         bar = TQDM(self.dataloader, desc=self.get_desc(), total=len(self.dataloader))
         self.init_metrics(unwrap_model(model))
-        self.jdict = []  # empty before each val
-        for batch_i, batch in enumerate(bar):
-            self.run_callbacks("on_val_batch_start")
+        self.jdict = []
+        for (batch_i, batch) in enumerate(bar):
+            self.run_callbacks('on_val_batch_start')
             self.batch_i = batch_i
-            # Preprocess
             with dt[0]:
                 batch = self.preprocess(batch)
-
             with autocast(self.training and self.args.quantize == 16, device=self.device.type):
-                # Inference
                 with dt[1]:
-                    preds = model(batch["img"], augment=augment)
-
-                # Loss
+                    preds = model(batch['img'], augment=augment)
                 with dt[2]:
                     if self.training:
-                        for k, v in model.loss(batch, preds)[1].items():
+                        for (k, v) in model.loss(batch, preds)[1].items():
                             self.loss[k] += v
-
-            # Postprocess
             with dt[3]:
                 preds = self.postprocess(preds)
-
             self.update_metrics(preds, batch)
-            if self.args.plots and batch_i < 3 and RANK in {-1, 0}:
+            if self.args.plots and batch_i < 3 and (RANK in {-1, 0}):
                 self.plot_val_samples(batch, batch_i)
                 self.plot_predictions(batch, preds, batch_i)
-
-            self.run_callbacks("on_val_batch_end")
-
+            self.run_callbacks('on_val_batch_end')
         stats = {}
         self.gather_stats()
         if RANK in {-1, 0}:
             stats = self.get_stats()
-            self.speed = dict(zip(self.speed.keys(), (x.t / len(self.dataloader.dataset) * 1e3 for x in dt)))
+            self.speed = dict(zip(self.speed.keys(), (x.t / len(self.dataloader.dataset) * 1000.0 for x in dt)))
             self.finalize_metrics()
             self.print_results()
-            self.run_callbacks("on_val_end")
-
+            self.run_callbacks('on_val_end')
         if self.training:
-            # Reduce loss across all GPUs
-            loss = {k: v.clone().detach() for k, v in self.loss.items()}
+            loss = {k: v.clone().detach() for (k, v) in self.loss.items()}
             if trainer.world_size > 1:
                 for v in loss.values():
                     dist.reduce(v, dst=0, op=dist.ReduceOp.AVG)
             if RANK > 0:
                 return
-            loss = {k: v.cpu() / len(self.dataloader) for k, v in loss.items()}
-            results = {**stats, **trainer.label_loss_items(loss, prefix="val")}
-            return {k: round(float(v), 5) for k, v in results.items()}  # return results as 5 decimal place floats
+            loss = {k: v.cpu() / len(self.dataloader) for (k, v) in loss.items()}
+            results = {**stats, **trainer.label_loss_items(loss, prefix='val')}
+            return {k: round(float(v), 5) for (k, v) in results.items()}
         else:
             if RANK > 0:
                 return stats
-            LOGGER.info(
-                "Speed: {:.1f}ms preprocess, {:.1f}ms inference, {:.1f}ms loss, {:.1f}ms postprocess per image".format(
-                    *tuple(self.speed.values())
-                )
-            )
+            LOGGER.info('Speed: {:.1f}ms preprocess, {:.1f}ms inference, {:.1f}ms loss, {:.1f}ms postprocess per image'.format(*tuple(self.speed.values())))
             if self.args.save_json and self.jdict:
-                with open(str(self.save_dir / "predictions.json"), "w", encoding="utf-8") as f:
-                    LOGGER.info(f"Saving {f.name}...")
-                    json.dump(self.jdict, f)  # flatten and save
-                stats = self.eval_json(stats)  # update stats
+                with open(str(self.save_dir / 'predictions.json'), 'w', encoding='utf-8') as f:
+                    LOGGER.info(f'Saving {f.name}...')
+                    json.dump(self.jdict, f)
+                stats = self.eval_json(stats)
             if self.args.plots or self.args.save_json:
                 LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}")
             return stats
 
-    def match_predictions(
-        self, pred_classes: torch.Tensor, true_classes: torch.Tensor, iou: torch.Tensor, use_scipy: bool = False
-    ) -> torch.Tensor:
+    def match_predictions(self, pred_classes, true_classes, iou, use_scipy=False):
         """Match predictions to ground truth objects using IoU.
 
         Args:
@@ -319,22 +255,20 @@ class BaseValidator:
         Returns:
             (torch.Tensor): Correct tensor of shape (N, 10) for 10 IoU thresholds.
         """
-        # Dx10 matrix, where D - detections, 10 - IoU thresholds
         correct = np.zeros((pred_classes.shape[0], self.iouv.shape[0])).astype(bool)
-        # LxD matrix where L - labels (rows), D - detections (columns)
         correct_class = true_classes[:, None] == pred_classes
-        iou = iou * correct_class  # zero out the wrong classes
+        iou = iou * correct_class
         iou = iou.cpu().numpy()
-        for i, threshold in enumerate(self.iouv.cpu().tolist()):
+        for (i, threshold) in enumerate(self.iouv.cpu().tolist()):
             if use_scipy:
                 cost_matrix = iou * (iou >= threshold)
                 if cost_matrix.any():
-                    labels_idx, detections_idx = linear_sum_assignment(-cost_matrix)  # negate to maximize IoU
+                    (labels_idx, detections_idx) = linear_sum_assignment(-cost_matrix)
                     valid = cost_matrix[labels_idx, detections_idx] > 0
                     if valid.any():
                         correct[detections_idx[valid], i] = True
             else:
-                matches = np.nonzero(iou >= threshold)  # IoU > threshold and classes match
+                matches = np.nonzero(iou >= threshold)
                 matches = np.array(matches).T
                 if matches.shape[0]:
                     if matches.shape[0] > 1:
@@ -357,22 +291,22 @@ class BaseValidator:
         """
         return trainer.ema.ema if trainer is not None else deepcopy(model)
 
-    def add_callback(self, event: str, callback):
+    def add_callback(self, event, callback):
         """Append the given callback to the specified event."""
         self.callbacks[event].append(callback)
 
-    def run_callbacks(self, event: str):
+    def run_callbacks(self, event):
         """Run all callbacks associated with a specified event."""
         for callback in self.callbacks.get(event, []):
             callback(self)
 
     def get_dataloader(self, dataset_path, batch_size):
         """Get data loader from dataset path and batch size."""
-        raise NotImplementedError("get_dataloader function not implemented for this validator")
+        raise NotImplementedError('get_dataloader function not implemented for this validator')
 
     def build_dataset(self, img_path):
         """Build dataset from image path."""
-        raise NotImplementedError("build_dataset function not implemented in validator")
+        raise NotImplementedError('build_dataset function not implemented in validator')
 
     def preprocess(self, batch):
         """Preprocess an input batch."""
@@ -411,7 +345,7 @@ class BaseValidator:
 
     def on_plot(self, name, data=None):
         """Register a plot by its unique path for visualization and logging."""
-        self.plots[Path(name)] = {"data": data, "timestamp": time.time()}
+        self.plots[Path(name)] = {'data': data, 'timestamp': time.time()}
 
     def plot_val_samples(self, batch, ni):
         """Plot validation samples during training."""

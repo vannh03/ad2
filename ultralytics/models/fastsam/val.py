@@ -1,9 +1,4 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from ultralytics.models.yolo.segment import SegmentationValidator
-
 
 class FastSAMValidator(SegmentationValidator):
     """Custom validation class for FastSAM (Segment Anything Model) segmentation in the Ultralytics YOLO framework.
@@ -23,7 +18,7 @@ class FastSAMValidator(SegmentationValidator):
         __init__: Initialize the FastSAMValidator with custom settings for FastSAM.
     """
 
-    def __init__(self, dataloader=None, save_dir=None, args=None, _callbacks: dict | None = None):
+    def __init__(self, dataloader=None, save_dir=None, args=None, _callbacks=None):
         """Initialize the FastSAMValidator class, setting the task to 'segment' and metrics to SegmentMetrics.
 
         Args:
@@ -36,5 +31,5 @@ class FastSAMValidator(SegmentationValidator):
             Plots for ConfusionMatrix and other related metrics are disabled in this class to avoid errors.
         """
         super().__init__(dataloader, save_dir, args, _callbacks)
-        self.args.task = "segment"
-        self.args.plots = False  # disable ConfusionMatrix and other plots to avoid errors
+        self.args.task = 'segment'
+        self.args.plots = False

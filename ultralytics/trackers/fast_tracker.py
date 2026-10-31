@@ -1,19 +1,11 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from collections import deque
 from typing import Any
-
 import numpy as np
-
 from ultralytics.utils.metrics import bbox_ioa
-
 from .basetrack import TrackState
 from .byte_tracker import BYTETracker, STrack
 from .utils import matching
 from .utils.stracks import parse_bboxes
-
 
 class FastSTrack(STrack):
     """Single-object track for FastTracker with occlusion-aware state.
@@ -42,7 +34,7 @@ class FastSTrack(STrack):
         1
     """
 
-    def __init__(self, xywh: np.ndarray, score: float, cls: Any, history_len: int = 16):
+    def __init__(self, xywh, score, cls, history_len=16):
         """Initialize a FastSTrack.
 
         Args:
@@ -52,7 +44,7 @@ class FastSTrack(STrack):
             history_len (int): Maximum number of past Kalman mean vectors kept for occlusion rollback.
         """
         super().__init__(xywh, score, cls)
-        self.mean_history: deque = deque(maxlen=history_len)
+        self.mean_history = deque(maxlen=history_len)
         self.not_matched = 0
         self.is_occluded = False
         self.occluded_len = 0
@@ -64,7 +56,7 @@ class FastSTrack(STrack):
         if self.mean is not None:
             self.mean_history.append((self.mean.copy(), self.covariance.copy()))
 
-    def activate(self, kalman_filter, frame_id: int):
+    def activate(self, kalman_filter, frame_id):
         """Activate the track and seed its mean history.
 
         Args:
@@ -74,7 +66,7 @@ class FastSTrack(STrack):
         super().activate(kalman_filter, frame_id)
         self._push_history()
 
-    def re_activate(self, new_track, frame_id: int, new_id: bool = False):
+    def re_activate(self, new_track, frame_id, new_id=False):
         """Re-activate a previously lost track and clear any stale occlusion bookkeeping.
 
         Args:
@@ -90,7 +82,7 @@ class FastSTrack(STrack):
         self.last_occluded_frame = -1
         self._push_history()
 
-    def update(self, new_track, frame_id: int):
+    def update(self, new_track, frame_id):
         """Update the track with a newly matched detection.
 
         Args:
@@ -99,7 +91,6 @@ class FastSTrack(STrack):
         """
         super().update(new_track, frame_id)
         self._push_history()
-
 
 class FASTTracker(BYTETracker):
     """Occlusion-aware ByteTrack-style multi-object tracker.
@@ -146,7 +137,6 @@ class FASTTracker(BYTETracker):
         >>> tracker = FASTTracker(cfg)
         >>> tracks = tracker.update(detections)
     """
-
     track_class = FastSTrack
 
     def __init__(self, args):
@@ -161,19 +151,17 @@ class FASTTracker(BYTETracker):
                 ``fuse_score``) and may provide the FastTracker-specific keys described in the class docstring.
         """
         super().__init__(args)
-        # Occlusion-handling knobs (fall back to sensible defaults if absent on args)
-        self.reset_velocity_offset_occ = int(getattr(args, "reset_velocity_offset_occ", 5))
-        self.reset_pos_offset_occ = int(getattr(args, "reset_pos_offset_occ", 3))
-        self.enlarge_bbox_occ = float(getattr(args, "enlarge_bbox_occ", 1.1))
-        self.dampen_motion_occ = float(getattr(args, "dampen_motion_occ", 0.5))
-        self.active_occ_to_lost_thresh = int(getattr(args, "active_occ_to_lost_thresh", 10))
-        self.init_iou_suppress = float(getattr(args, "init_iou_suppress", 0.7))
-        self.occ_cover_thresh = float(getattr(args, "occ_cover_thresh", 0.7))
-        self.occ_reappear_window = int(getattr(args, "occ_reappear_window", 40))
-        # Cap history to the max rollback we'll need + small slack.
+        self.reset_velocity_offset_occ = int(getattr(args, 'reset_velocity_offset_occ', 5))
+        self.reset_pos_offset_occ = int(getattr(args, 'reset_pos_offset_occ', 3))
+        self.enlarge_bbox_occ = float(getattr(args, 'enlarge_bbox_occ', 1.1))
+        self.dampen_motion_occ = float(getattr(args, 'dampen_motion_occ', 0.5))
+        self.active_occ_to_lost_thresh = int(getattr(args, 'active_occ_to_lost_thresh', 10))
+        self.init_iou_suppress = float(getattr(args, 'init_iou_suppress', 0.7))
+        self.occ_cover_thresh = float(getattr(args, 'occ_cover_thresh', 0.7))
+        self.occ_reappear_window = int(getattr(args, 'occ_reappear_window', 40))
         self._history_len = max(self.reset_velocity_offset_occ, self.reset_pos_offset_occ) + 4
 
-    def init_track(self, results, img: np.ndarray | None = None) -> list[FastSTrack]:
+    def init_track(self, results, img=None):
         """Build `FastSTrack` instances from a ``Results``-like object.
 
         Args:
@@ -187,83 +175,55 @@ class FASTTracker(BYTETracker):
         if len(results) == 0:
             return []
         bboxes = parse_bboxes(results)
-        return [
-            FastSTrack(xywh, s, c, history_len=self._history_len)
-            for (xywh, s, c) in zip(bboxes, results.conf, results.cls)
-        ]
+        return [FastSTrack(xywh, s, c, history_len=self._history_len) for (xywh, s, c) in zip(bboxes, results.conf, results.cls)]
 
-    def _apply_match(self, track: STrack, det: STrack, activated: list[STrack], refind: list[STrack]) -> None:
+    def _apply_match(self, track, det, activated, refind):
         """Update or re-activate a track and clear any occlusion bookkeeping on a successful match."""
         super()._apply_match(track, det, activated, refind)
         track.is_occluded = False
         track.not_matched = 0
         track.occluded_len = 0
 
-    def _second_association(
-        self,
-        strack_pool: list[STrack],
-        u_track: list[int],
-        detections_second: list[STrack],
-        activated: list[STrack],
-        refind: list[STrack],
-        lost: list[STrack],
-    ) -> None:
+    def _second_association(self, strack_pool, u_track, detections_second, activated, refind, lost):
         """Second-stage association + occlusion handling (replaces base mark-lost loop)."""
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
         if r_tracked_stracks and detections_second:
             dists = matching.iou_distance(r_tracked_stracks, detections_second)
-            matches, u_track, _ = matching.linear_assignment(dists, thresh=0.5)
+            (matches, u_track, _) = matching.linear_assignment(dists, thresh=0.5)
             self._apply_matches(matches, r_tracked_stracks, detections_second, activated, refind)
         else:
             u_track = list(range(len(r_tracked_stracks)))
         self._handle_occlusions(r_tracked_stracks, u_track, activated, lost)
 
-    def _init_new_tracks(
-        self,
-        u_detection: list[int],
-        detections: list[STrack],
-        activated: list[STrack],
-        refind: list[STrack] | None = None,
-    ) -> None:
+    def _init_new_tracks(self, u_detection, detections, activated, refind=None):
         """Activate new tracks, suppressing detections that heavily overlap already-active tracks."""
         active_boxes = [t.xyxy for t in activated if t.is_activated]
         if refind:
-            active_boxes.extend(t.xyxy for t in refind if t.is_activated)
-        active_boxes.extend(t.xyxy for t in self.tracked_stracks if t.state == TrackState.Tracked)
+            active_boxes.extend((t.xyxy for t in refind if t.is_activated))
+        active_boxes.extend((t.xyxy for t in self.tracked_stracks if t.state == TrackState.Tracked))
         suppress_on = self.init_iou_suppress < 1.0
-        active_stack = (
-            np.asarray(active_boxes, dtype=np.float32) if active_boxes else np.empty((0, 4), dtype=np.float32)
-        )
+        active_stack = np.asarray(active_boxes, dtype=np.float32) if active_boxes else np.empty((0, 4), dtype=np.float32)
         for inew in u_detection:
             det = detections[inew]
             if det.score < self.args.new_track_thresh:
                 continue
-            if (
-                suppress_on
-                and len(active_stack)
-                and bbox_ioa(det.xyxy[None, :], active_stack, iou=True).max() >= self.init_iou_suppress
-            ):
+            if suppress_on and len(active_stack) and (bbox_ioa(det.xyxy[None, :], active_stack, iou=True).max() >= self.init_iou_suppress):
                 continue
             det.activate(self.kalman_filter, self.frame_id)
             activated.append(det)
             active_stack = np.concatenate([active_stack, det.xyxy[None, :]], axis=0)
 
-    def _remove_stale_lost(self, removed: list[STrack]) -> None:
+    def _remove_stale_lost(self, removed):
         """Remove lost tracks, with a grace window for recently-occluded ones."""
         for track in self.lost_stracks:
-            recently_occluded = track.was_recently_occluded and (
-                self.frame_id - track.last_occluded_frame <= self.occ_reappear_window
-            )
-            if not recently_occluded and (self.frame_id - track.end_frame > self.max_frames_lost):
+            recently_occluded = track.was_recently_occluded and self.frame_id - track.last_occluded_frame <= self.occ_reappear_window
+            if not recently_occluded and self.frame_id - track.end_frame > self.max_frames_lost:
                 track.mark_removed()
                 removed.append(track)
 
-    def _format_output(self) -> np.ndarray:
+    def _format_output(self):
         """Only emit tracks updated this frame to avoid stale ``idx`` values."""
-        return np.asarray(
-            [x.result for x in self.tracked_stracks if x.is_activated and x.frame_id == self.frame_id],
-            dtype=np.float32,
-        )
+        return np.asarray([x.result for x in self.tracked_stracks if x.is_activated and x.frame_id == self.frame_id], dtype=np.float32)
 
     def _handle_occlusions(self, r_tracked, u_track, activated_stracks, lost_stracks):
         """Flag unmatched tracked tracks as occluded when covered by an active neighbor.
@@ -285,66 +245,45 @@ class FASTTracker(BYTETracker):
         """
         if len(u_track) == 0:
             return
-
-        # Build active-track box array once (vectorized cover check).
-        active = [t for t in activated_stracks if t.is_activated and not t.is_occluded]
+        active = [t for t in activated_stracks if t.is_activated and (not t.is_occluded)]
         if len(active):
             active_boxes = np.asarray([t.xyxy for t in active], dtype=np.float32)
             active_ids = np.asarray([t.track_id for t in active])
         else:
             active_boxes = np.empty((0, 4), dtype=np.float32)
             active_ids = np.empty((0,), dtype=np.int64)
-
         unmatched = [r_tracked[i] for i in u_track]
-        unmatched_boxes = (
-            np.asarray([t.xyxy for t in unmatched], dtype=np.float32)
-            if unmatched
-            else np.empty((0, 4), dtype=np.float32)
-        )
-
+        unmatched_boxes = np.asarray([t.xyxy for t in unmatched], dtype=np.float32) if unmatched else np.empty((0, 4), dtype=np.float32)
         if active_boxes.size and unmatched_boxes.size:
-            cov = bbox_ioa(active_boxes, unmatched_boxes)  # (A, U) = intersection / unmatched-track area
-            # Avoid self-match: zero out entries that correspond to the same track id.
+            cov = bbox_ioa(active_boxes, unmatched_boxes)
             unm_ids = np.asarray([t.track_id for t in unmatched])
             same = active_ids[:, None] == unm_ids[None, :]
             cov[same] = 0.0
-            max_cov = cov.max(axis=0)  # per unmatched track, max fraction of its area covered by an active track
+            max_cov = cov.max(axis=0)
         else:
             max_cov = np.zeros(len(unmatched), dtype=np.float32)
-
-        for i, track in enumerate(unmatched):
+        for (i, track) in enumerate(unmatched):
             track.not_matched += 1
-
-            if max_cov[i] > self.occ_cover_thresh and not track.is_occluded and track.state == TrackState.Tracked:
+            if max_cov[i] > self.occ_cover_thresh and (not track.is_occluded) and (track.state == TrackState.Tracked):
                 track.is_occluded = True
                 track.occluded_len = 1
                 track.last_occluded_frame = self.frame_id
                 track.was_recently_occluded = True
-
                 hist = track.mean_history
                 if track.mean is not None and hist:
                     if len(hist) >= self.reset_velocity_offset_occ:
-                        prev_mean, _ = hist[-self.reset_velocity_offset_occ]
+                        (prev_mean, _) = hist[-self.reset_velocity_offset_occ]
                         track.mean[4:8] = prev_mean[4:8]
                     if len(hist) >= self.reset_pos_offset_occ:
-                        prev_mean, prev_cov = hist[-self.reset_pos_offset_occ]
+                        (prev_mean, prev_cov) = hist[-self.reset_pos_offset_occ]
                         track.mean[0:4] = prev_mean[0:4]
                         track.covariance = prev_cov.copy()
-                    # Enlarge height once to expand search region (XYAH state: a is held, so
-                    # scaling h proportionally scales w via w = a * h).
                     track.mean[3] *= self.enlarge_bbox_occ
                     track.mean[4:8] *= self.dampen_motion_occ
             elif track.is_occluded:
                 track.occluded_len += 1
-
-            if track.was_recently_occluded and (self.frame_id - track.last_occluded_frame > self.occ_reappear_window):
+            if track.was_recently_occluded and self.frame_id - track.last_occluded_frame > self.occ_reappear_window:
                 track.was_recently_occluded = False
-
-            # Give occluded tracks a grace period before marking lost.
-            if (
-                track.state != TrackState.Lost
-                and track.not_matched > 2
-                and (not track.is_occluded or track.occluded_len > self.active_occ_to_lost_thresh)
-            ):
+            if track.state != TrackState.Lost and track.not_matched > 2 and (not track.is_occluded or track.occluded_len > self.active_occ_to_lost_thresh):
                 track.mark_lost()
                 lost_stracks.append(track)

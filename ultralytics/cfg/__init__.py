@@ -1,7 +1,3 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 import ast
 import os
 import shutil
@@ -10,307 +6,30 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-
 from ultralytics import __version__
-from ultralytics.utils import (
-    ASSETS,
-    DEFAULT_CFG,
-    DEFAULT_CFG_DICT,
-    DEFAULT_CFG_PATH,
-    FLOAT_OR_INT,
-    IS_VSCODE,
-    LOGGER,
-    PLATFORM_URL,
-    RANK,
-    ROOT,
-    SETTINGS,
-    SETTINGS_FILE,
-    STR_OR_PATH,
-    TESTS_RUNNING,
-    YAML,
-    IterableSimpleNamespace,
-    checks,
-    colorstr,
-    deprecation_warn,
-    vscode_msg,
-)
-
-# Define valid solutions
-SOLUTION_MAP = {
-    "count": "ObjectCounter",
-    "crop": "ObjectCropper",
-    "blur": "ObjectBlurrer",
-    "workout": "AIGym",
-    "heatmap": "Heatmap",
-    "isegment": "InstanceSegmentation",
-    "visioneye": "VisionEye",
-    "speed": "SpeedEstimator",
-    "queue": "QueueManager",
-    "analytics": "Analytics",
-    "inference": "Inference",
-    "trackzone": "TrackZone",
-    "region": "RegionCounter",
-    "security": "SecurityAlarm",
-    "parking": "ParkingManagement",
-    "help": None,
-}
-
-# Define valid tasks and modes, ordered as they appear across the docs and Ultralytics Platform
-MODES = ("train", "val", "predict", "export", "track", "benchmark")
-TASKS = ("detect", "segment", "semantic", "depth", "classify", "pose", "obb")
-TASK2DATA = {
-    "detect": "coco8.yaml",
-    "segment": "coco8-seg.yaml",
-    "semantic": "cityscapes8.yaml",
-    "depth": "depth8.yaml",
-    "classify": "imagenet10",
-    "pose": "coco8-pose.yaml",
-    "obb": "dota8.yaml",
-}
-TASK2CALIBRATIONDATA = {
-    "detect": "coco128.yaml",
-    "segment": "coco128-seg.yaml",
-    "semantic": "cityscapes8.yaml",
-    "depth": "depth8.yaml",
-    "classify": "imagenet100",
-    "pose": "coco8-pose.yaml",
-    "obb": "dota128.yaml",
-}
-TASK2MODEL = {
-    "detect": "yolo26n.pt",
-    "segment": "yolo26n-seg.pt",
-    "semantic": "yolo26n-sem.pt",
-    "depth": "yolo26n-depth.pt",
-    "classify": "yolo26n-cls.pt",
-    "pose": "yolo26n-pose.pt",
-    "obb": "yolo26n-obb.pt",
-}
-TASK2METRIC = {
-    "detect": "metrics/mAP50-95(B)",
-    "segment": "metrics/mAP50-95(M)",
-    "semantic": "metrics/mIoU",
-    "depth": "metrics/delta1",
-    "classify": "metrics/accuracy_top1",
-    "pose": "metrics/mAP50-95(P)",
-    "obb": "metrics/mAP50-95(B)",
-}
-
-ARGV = sys.argv or ["", ""]  # sometimes sys.argv = []
-_YOLO_CLI_COMMAND = [sys.executable, "-m", "ultralytics.cfg.__init__"]
-SOLUTIONS_HELP_MSG = f"""
-    Arguments received: {["yolo", *ARGV[1:]]!s}. Ultralytics 'yolo solutions' usage overview:
-
-        yolo solutions SOLUTION ARGS
-
-        Where SOLUTION (optional) is one of {list(SOLUTION_MAP.keys())[:-1]}
-              ARGS (optional) are any number of custom 'arg=value' pairs like 'show_in=True' that override defaults
-                  at https://docs.ultralytics.com/usage/cfg
-
-    1. Call object counting solution
-        yolo solutions count source="path/to/video.mp4" region="[(20, 400), (1080, 400), (1080, 360), (20, 360)]"
-
-    2. Call heatmap solution
-        yolo solutions heatmap colormap=cv2.COLORMAP_PARULA model=yolo26n.pt
-
-    3. Call queue management solution
-        yolo solutions queue region="[(20, 400), (1080, 400), (1080, 360), (20, 360)]" model=yolo26n.pt
-
-    4. Call workout monitoring solution for push-ups
-        yolo solutions workout model=yolo26n-pose.pt kpts=[6, 8, 10]
-
-    5. Generate analytical graphs
-        yolo solutions analytics analytics_type="pie"
-
-    6. Track objects within specific zones
-        yolo solutions trackzone source="path/to/video.mp4" region="[(150, 150), (1130, 150), (1130, 570), (150, 570)]"
-
-    7. Count objects inside specific regions
-        yolo solutions region source="path/to/video.mp4" region="[(20, 400), (1080, 400), (1080, 360), (20, 360)]"
-
-    8. Run security alarm monitoring (email alerts require Python API)
-        yolo solutions security source="path/to/video.mp4"
-
-    9. Monitor parking occupancy (create JSON annotations first via Python ParkingPtsSelection)
-        yolo solutions parking source="path/to/video.mp4" json_file="bounding_boxes.json"
-
-    10. Streamlit real-time webcam inference GUI
-        yolo streamlit-predict
-    """
-CLI_HELP_MSG = f"""
-    Arguments received: {["yolo", *ARGV[1:]]!s}. Ultralytics 'yolo' commands use the following syntax:
-
-        yolo TASK MODE ARGS
-
-        Where   TASK (optional) is one of {list(TASKS)}
-                MODE (required) is one of {list(MODES)}
-                ARGS (optional) are any number of custom 'arg=value' pairs like 'imgsz=320' that override defaults.
-                    See all ARGS at https://docs.ultralytics.com/usage/cfg or with 'yolo cfg'
-
-    1. Train a detection model for 10 epochs with an initial learning_rate of 0.01
-        yolo train data=coco8.yaml model=yolo26n.pt epochs=10 lr0=0.01
-
-    2. Predict a YouTube video using a pretrained segmentation model at image size 320:
-        yolo predict model=yolo26n-seg.pt source='https://youtu.be/LNwODJXcvt4' imgsz=320
-
-    3. Validate a pretrained detection model at batch-size 1 and image size 640:
-        yolo val model=yolo26n.pt data=coco8.yaml batch=1 imgsz=640
-
-    4. Export a YOLO26n classification model to ONNX format at image size 224 by 128 (no TASK required)
-        yolo export model=yolo26n-cls.pt format=onnx imgsz=224,128
-
-    5. Ultralytics solutions usage
-        yolo solutions count or any of {list(SOLUTION_MAP.keys())[1:-1]} source="path/to/video.mp4"
-
-    6. Run special commands:
-        yolo help
-        yolo checks
-        yolo version
-        yolo settings
-        yolo login API_KEY
-        yolo logout
-        yolo copy-cfg
-        yolo cfg
-        yolo solutions help
-
-    Docs: https://docs.ultralytics.com
-    Platform: https://platform.ultralytics.com
-    Community: https://community.ultralytics.com
-    GitHub: https://github.com/ultralytics/ultralytics
-    """
-
-# Quantization aliases: maps any accepted `quantize` value to its canonical form. The common case is the integer
-# bit-width 8 (INT8) / 16 (FP16) / 32 (FP32); the verbose w<weights>a<activations> strings are accepted too and
-# collapse to the same ints, except the mixed-precision schemes that have no bit-width shorthand: 'w8a16' (INT8
-# weights + FP16 activations) and 'w8a32' (INT8 weights + FP32 activations, i.e. LiteRT dynamic/weight-only INT8).
-QUANTIZE_ALIASES = {
-    "8": 8,
-    "16": 16,
-    "32": 32,
-    "int8": 8,
-    "fp16": 16,
-    "fp32": 32,
-    "w8a8": 8,
-    "w16a16": 16,
-    "w32a32": 32,
-    "w8a16": "w8a16",
-    "w8a32": "w8a32",
-}
-QUANTIZE_DOCS_URL = "https://docs.ultralytics.com/modes/export#quantization-options"
+from ultralytics.utils import ASSETS, DEFAULT_CFG, DEFAULT_CFG_DICT, DEFAULT_CFG_PATH, FLOAT_OR_INT, IS_VSCODE, LOGGER, PLATFORM_URL, RANK, ROOT, SETTINGS, SETTINGS_FILE, STR_OR_PATH, TESTS_RUNNING, YAML, IterableSimpleNamespace, checks, colorstr, deprecation_warn, vscode_msg
+SOLUTION_MAP = {'count': 'ObjectCounter', 'crop': 'ObjectCropper', 'blur': 'ObjectBlurrer', 'workout': 'AIGym', 'heatmap': 'Heatmap', 'isegment': 'InstanceSegmentation', 'visioneye': 'VisionEye', 'speed': 'SpeedEstimator', 'queue': 'QueueManager', 'analytics': 'Analytics', 'inference': 'Inference', 'trackzone': 'TrackZone', 'region': 'RegionCounter', 'security': 'SecurityAlarm', 'parking': 'ParkingManagement', 'help': None}
+MODES = ('train', 'val', 'predict', 'export', 'track', 'benchmark')
+TASKS = ('detect', 'segment', 'semantic', 'depth', 'classify', 'pose', 'obb')
+TASK2DATA = {'detect': 'coco8.yaml', 'segment': 'coco8-seg.yaml', 'semantic': 'cityscapes8.yaml', 'depth': 'depth8.yaml', 'classify': 'imagenet10', 'pose': 'coco8-pose.yaml', 'obb': 'dota8.yaml'}
+TASK2CALIBRATIONDATA = {'detect': 'coco128.yaml', 'segment': 'coco128-seg.yaml', 'semantic': 'cityscapes8.yaml', 'depth': 'depth8.yaml', 'classify': 'imagenet100', 'pose': 'coco8-pose.yaml', 'obb': 'dota128.yaml'}
+TASK2MODEL = {'detect': 'yolo26n.pt', 'segment': 'yolo26n-seg.pt', 'semantic': 'yolo26n-sem.pt', 'depth': 'yolo26n-depth.pt', 'classify': 'yolo26n-cls.pt', 'pose': 'yolo26n-pose.pt', 'obb': 'yolo26n-obb.pt'}
+TASK2METRIC = {'detect': 'metrics/mAP50-95(B)', 'segment': 'metrics/mAP50-95(M)', 'semantic': 'metrics/mIoU', 'depth': 'metrics/delta1', 'classify': 'metrics/accuracy_top1', 'pose': 'metrics/mAP50-95(P)', 'obb': 'metrics/mAP50-95(B)'}
+ARGV = sys.argv or ['', '']
+_YOLO_CLI_COMMAND = [sys.executable, '-m', 'ultralytics.cfg.__init__']
+SOLUTIONS_HELP_MSG = f"""\n    Arguments received: {['yolo', *ARGV[1:]]!s}. Ultralytics 'yolo solutions' usage overview:\n\n        yolo solutions SOLUTION ARGS\n\n        Where SOLUTION (optional) is one of {list(SOLUTION_MAP.keys())[:-1]}\n              ARGS (optional) are any number of custom 'arg=value' pairs like 'show_in=True' that override defaults\n                  at https://docs.ultralytics.com/usage/cfg\n\n    1. Call object counting solution\n        yolo solutions count source="path/to/video.mp4" region="[(20, 400), (1080, 400), (1080, 360), (20, 360)]"\n\n    2. Call heatmap solution\n        yolo solutions heatmap colormap=cv2.COLORMAP_PARULA model=yolo26n.pt\n\n    3. Call queue management solution\n        yolo solutions queue region="[(20, 400), (1080, 400), (1080, 360), (20, 360)]" model=yolo26n.pt\n\n    4. Call workout monitoring solution for push-ups\n        yolo solutions workout model=yolo26n-pose.pt kpts=[6, 8, 10]\n\n    5. Generate analytical graphs\n        yolo solutions analytics analytics_type="pie"\n\n    6. Track objects within specific zones\n        yolo solutions trackzone source="path/to/video.mp4" region="[(150, 150), (1130, 150), (1130, 570), (150, 570)]"\n\n    7. Count objects inside specific regions\n        yolo solutions region source="path/to/video.mp4" region="[(20, 400), (1080, 400), (1080, 360), (20, 360)]"\n\n    8. Run security alarm monitoring (email alerts require Python API)\n        yolo solutions security source="path/to/video.mp4"\n\n    9. Monitor parking occupancy (create JSON annotations first via Python ParkingPtsSelection)\n        yolo solutions parking source="path/to/video.mp4" json_file="bounding_boxes.json"\n\n    10. Streamlit real-time webcam inference GUI\n        yolo streamlit-predict\n    """
+CLI_HELP_MSG = f"""\n    Arguments received: {['yolo', *ARGV[1:]]!s}. Ultralytics 'yolo' commands use the following syntax:\n\n        yolo TASK MODE ARGS\n\n        Where   TASK (optional) is one of {list(TASKS)}\n                MODE (required) is one of {list(MODES)}\n                ARGS (optional) are any number of custom 'arg=value' pairs like 'imgsz=320' that override defaults.\n                    See all ARGS at https://docs.ultralytics.com/usage/cfg or with 'yolo cfg'\n\n    1. Train a detection model for 10 epochs with an initial learning_rate of 0.01\n        yolo train data=coco8.yaml model=yolo26n.pt epochs=10 lr0=0.01\n\n    2. Predict a YouTube video using a pretrained segmentation model at image size 320:\n        yolo predict model=yolo26n-seg.pt source='https://youtu.be/LNwODJXcvt4' imgsz=320\n\n    3. Validate a pretrained detection model at batch-size 1 and image size 640:\n        yolo val model=yolo26n.pt data=coco8.yaml batch=1 imgsz=640\n\n    4. Export a YOLO26n classification model to ONNX format at image size 224 by 128 (no TASK required)\n        yolo export model=yolo26n-cls.pt format=onnx imgsz=224,128\n\n    5. Ultralytics solutions usage\n        yolo solutions count or any of {list(SOLUTION_MAP.keys())[1:-1]} source="path/to/video.mp4"\n\n    6. Run special commands:\n        yolo help\n        yolo checks\n        yolo version\n        yolo settings\n        yolo login API_KEY\n        yolo logout\n        yolo copy-cfg\n        yolo cfg\n        yolo solutions help\n\n    Docs: https://docs.ultralytics.com\n    Platform: https://platform.ultralytics.com\n    Community: https://community.ultralytics.com\n    GitHub: https://github.com/ultralytics/ultralytics\n    """
+QUANTIZE_ALIASES = {'8': 8, '16': 16, '32': 32, 'int8': 8, 'fp16': 16, 'fp32': 32, 'w8a8': 8, 'w16a16': 16, 'w32a32': 32, 'w8a16': 'w8a16', 'w8a32': 'w8a32'}
+QUANTIZE_DOCS_URL = 'https://docs.ultralytics.com/modes/export#quantization-options'
 QUANTIZE_VALID_VALUES = "8, 16, 32, 'int8', 'fp16', 'fp32', 'w8a8', 'w16a16', 'w8a16', or 'w8a32'"
+CFG_FLOAT_KEYS = frozenset({'warmup_epochs', 'box', 'cls', 'dfl', 'pose', 'kobj', 'rle', 'angle', 'dlog', 'dgrad', 'dis', 'degrees', 'shear', 'time', 'workspace', 'batch'})
+CFG_FRACTION_KEYS = frozenset({'dropout', 'lr0', 'lrf', 'cls_pw', 'momentum', 'weight_decay', 'warmup_momentum', 'warmup_bias_lr', 'hsv_h', 'hsv_s', 'hsv_v', 'translate', 'perspective', 'flipud', 'fliplr', 'bgr', 'mosaic', 'mixup', 'cutmix', 'copy_paste', 'erasing', 'conf', 'iou', 'fraction', 'multi_scale', 'dlam'})
+CFG_INT_KEYS = frozenset({'epochs', 'patience', 'workers', 'seed', 'close_mosaic', 'mask_ratio', 'max_det', 'vid_stride', 'line_width', 'nbs', 'save_period'})
+CFG_INT_MIN = {'nbs': 1, 'max_det': 1, 'mask_ratio': 1, 'vid_stride': 1, 'seed': 0}
+CFG_BOOL_KEYS = frozenset({'save', 'exist_ok', 'verbose', 'deterministic', 'single_cls', 'rect', 'cos_lr', 'overlap_mask', 'val', 'save_json', 'dnn', 'plots', 'show', 'save_txt', 'save_conf', 'save_crop', 'save_frames', 'show_labels', 'show_conf', 'visualize', 'augment', 'agnostic_nms', 'retina_masks', 'show_boxes', 'keras', 'optimize', 'dynamic', 'simplify', 'nms', 'profile', 'channels_last', 'cls_remap'})
+CFG_STR_KEYS = frozenset({'optimizer', 'split', 'copy_paste_mode', 'auto_augment'})
 
-# Define keys for arg type checks
-CFG_FLOAT_KEYS = frozenset(
-    {  # integer or float arguments, i.e. x=2 and x=2.0
-        "warmup_epochs",
-        "box",
-        "cls",
-        "dfl",
-        "pose",
-        "kobj",
-        "rle",
-        "angle",
-        "dlog",
-        "dgrad",
-        "dis",
-        "degrees",
-        "shear",
-        "time",
-        "workspace",
-        "batch",
-    }
-)
-CFG_FRACTION_KEYS = frozenset(
-    {  # fractional floats use [0.0, 1.0]; dataset fraction also accepts positive counts and split pairs
-        "dropout",
-        "lr0",
-        "lrf",
-        "cls_pw",
-        "momentum",
-        "weight_decay",
-        "warmup_momentum",
-        "warmup_bias_lr",
-        "hsv_h",
-        "hsv_s",
-        "hsv_v",
-        "translate",
-        "perspective",
-        "flipud",
-        "fliplr",
-        "bgr",
-        "mosaic",
-        "mixup",
-        "cutmix",
-        "copy_paste",
-        "erasing",
-        "conf",
-        "iou",
-        "fraction",
-        "multi_scale",
-        "dlam",
-    }
-)
-CFG_INT_KEYS = frozenset(
-    {  # integer-only arguments
-        "epochs",
-        "patience",
-        "workers",
-        "seed",
-        "close_mosaic",
-        "mask_ratio",
-        "max_det",
-        "vid_stride",
-        "line_width",
-        "nbs",
-        "save_period",
-    }
-)
-CFG_INT_MIN = {  # minimum valid values for integer arguments used as divisors, sizes or seeds
-    "nbs": 1,
-    "max_det": 1,
-    "mask_ratio": 1,
-    "vid_stride": 1,
-    "seed": 0,
-}
-CFG_BOOL_KEYS = frozenset(
-    {  # boolean-only arguments
-        "save",
-        "exist_ok",
-        "verbose",
-        "deterministic",
-        "single_cls",
-        "rect",
-        "cos_lr",
-        "overlap_mask",
-        "val",
-        "save_json",
-        "dnn",
-        "plots",
-        "show",
-        "save_txt",
-        "save_conf",
-        "save_crop",
-        "save_frames",
-        "show_labels",
-        "show_conf",
-        "visualize",
-        "augment",
-        "agnostic_nms",
-        "retina_masks",
-        "show_boxes",
-        "keras",
-        "optimize",
-        "dynamic",
-        "simplify",
-        "nms",
-        "profile",
-        "channels_last",
-        "cls_remap",
-    }
-)
-CFG_STR_KEYS = frozenset({"optimizer", "split", "copy_paste_mode", "auto_augment"})
-
-
-def cfg2dict(cfg: str | Path | dict | SimpleNamespace) -> dict:
+def cfg2dict(cfg):
     """Convert a configuration object to a dictionary.
 
     Args:
@@ -338,15 +57,12 @@ def cfg2dict(cfg: str | Path | dict | SimpleNamespace) -> dict:
         - If cfg is already a dictionary, it's returned unchanged.
     """
     if isinstance(cfg, STR_OR_PATH):
-        cfg = YAML.load(cfg)  # load dict
+        cfg = YAML.load(cfg)
     elif isinstance(cfg, SimpleNamespace):
-        cfg = vars(cfg)  # convert to dict
+        cfg = vars(cfg)
     return cfg
 
-
-def get_cfg(
-    cfg: str | Path | dict | SimpleNamespace = DEFAULT_CFG_DICT, overrides: dict | None = None
-) -> SimpleNamespace:
+def get_cfg(cfg=DEFAULT_CFG_DICT, overrides=None):
     """Load and merge configuration data from a file or dictionary, with optional overrides.
 
     Args:
@@ -369,29 +85,20 @@ def get_cfg(
         - The function performs type and value checks on the configuration data.
     """
     cfg = _handle_deprecation(cfg2dict(cfg))
-
-    # Merge overrides
     if overrides:
         overrides = cfg2dict(overrides)
         check_dict_alignment(cfg, overrides)
-        cfg = {**cfg, **overrides}  # merge cfg and overrides dicts (prefer overrides)
-
-    # Special handling for numeric project/name
-    for k in "project", "name":
+        cfg = {**cfg, **overrides}
+    for k in ('project', 'name'):
         if k in cfg and isinstance(cfg[k], FLOAT_OR_INT):
             cfg[k] = str(cfg[k])
-    if cfg.get("name") == "model":  # assign model to 'name' arg
-        cfg["name"] = Path(str(cfg.get("model") or "")).stem
+    if cfg.get('name') == 'model':
+        cfg['name'] = Path(str(cfg.get('model') or '')).stem
         LOGGER.warning(f"'name=model' automatically updated to 'name={cfg['name']}'.")
-
-    # Type and Value checks
     check_cfg(cfg)
-
-    # Return instance
     return IterableSimpleNamespace(**cfg)
 
-
-def check_cfg(cfg: dict, hard: bool = True) -> None:
+def check_cfg(cfg, hard=True):
     """Check configuration argument types and values for the Ultralytics library.
 
     This function validates the types and values of configuration arguments, ensuring correctness and converting them if
@@ -418,109 +125,77 @@ def check_cfg(cfg: dict, hard: bool = True) -> None:
         - None values are ignored as they may be from optional arguments.
         - Fraction keys use [0.0, 1.0]; dataset fraction also accepts counts and [train, val, test] lists.
     """
-    typed_keys = CFG_FLOAT_KEYS | CFG_FRACTION_KEYS | CFG_INT_KEYS | CFG_BOOL_KEYS | CFG_STR_KEYS | {"scale", "compile"}
-    for k, v in cfg.items():
-        if v is None and (
-            k == "amp" or (DEFAULT_CFG_DICT.get(k) is not None and k in typed_keys and k != "auto_augment")
-        ):
+    typed_keys = CFG_FLOAT_KEYS | CFG_FRACTION_KEYS | CFG_INT_KEYS | CFG_BOOL_KEYS | CFG_STR_KEYS | {'scale', 'compile'}
+    for (k, v) in cfg.items():
+        if v is None and (k == 'amp' or (DEFAULT_CFG_DICT.get(k) is not None and k in typed_keys and (k != 'auto_augment'))):
             raise TypeError(f"'{k}=None' is invalid. '{k}' must not be None.")
-        if v is not None:  # None values may be from optional args
-            if k in CFG_FLOAT_KEYS and not isinstance(v, FLOAT_OR_INT):
+        if v is not None:
+            if k in CFG_FLOAT_KEYS and (not isinstance(v, FLOAT_OR_INT)):
                 if hard:
-                    raise TypeError(
-                        f"'{k}={v}' is of invalid type {type(v).__name__}. "
-                        f"Valid '{k}' types are int (i.e. '{k}=0') or float (i.e. '{k}=0.5')"
-                    )
+                    raise TypeError(f"'{k}={v}' is of invalid type {type(v).__name__}. Valid '{k}' types are int (i.e. '{k}=0') or float (i.e. '{k}=0.5')")
                 cfg[k] = float(v)
-            elif k == "scale":
+            elif k == 'scale':
                 if isinstance(v, (list, tuple)):
-                    if len(v) != 2 or not all(isinstance(x, (int, float)) for x in v):
+                    if len(v) != 2 or not all((isinstance(x, (int, float)) for x in v)):
                         if hard:
-                            raise TypeError(
-                                f"'{k}={v}' is of invalid type {type(v).__name__}. "
-                                f"Valid '{k}' types are int, float, or a tuple/list of two floats (i.e. '{k}=(0.5, 2.0)')"
-                            )
+                            raise TypeError(f"'{k}={v}' is of invalid type {type(v).__name__}. Valid '{k}' types are int, float, or a tuple/list of two floats (i.e. '{k}=(0.5, 2.0)')")
                         continue
                     continue
                 elif not isinstance(v, FLOAT_OR_INT):
                     if hard:
-                        raise TypeError(
-                            f"'{k}={v}' is of invalid type {type(v).__name__}. "
-                            f"Valid '{k}' types are int (i.e. '{k}=0') or float (i.e. '{k}=0.5')"
-                        )
+                        raise TypeError(f"'{k}={v}' is of invalid type {type(v).__name__}. Valid '{k}' types are int (i.e. '{k}=0') or float (i.e. '{k}=0.5')")
                     cfg[k] = v = float(v)
-                if not (0.0 <= v <= 1.0):
+                if not 0.0 <= v <= 1.0:
                     raise ValueError(f"'{k}={v}' is an invalid value. Valid '{k}' values are between 0.0 and 1.0.")
             elif k in CFG_FRACTION_KEYS:
-                if k == "fraction" and isinstance(v, list):
-                    if (
-                        len(v) not in {2, 3}
-                        or not all(v[:2])
-                        or not all((type(x) is int and x >= 0) or (type(x) is float and 0.0 <= x <= 1.0) for x in v)
-                    ):
+                if k == 'fraction' and isinstance(v, list):
+                    if len(v) not in {2, 3} or not all(v[:2]) or (not all((type(x) is int and x >= 0 or (type(x) is float and 0.0 <= x <= 1.0) for x in v))):
                         raise ValueError(f"'{k}={v}' is invalid. Use [train, val] or [train, val, test] counts/ratios.")
                     cfg[k] = [float(x) if x in {0, 1} else x for x in v]
                     continue
-                if k == "fraction" and isinstance(v, bool):
+                if k == 'fraction' and isinstance(v, bool):
                     raise TypeError(f"'{k}={v}' is of invalid type bool. Valid '{k}' types are int, float, or list")
                 if not isinstance(v, FLOAT_OR_INT):
                     if hard:
-                        raise TypeError(
-                            f"'{k}={v}' is of invalid type {type(v).__name__}. "
-                            f"Valid '{k}' types are int (i.e. '{k}=0') or float (i.e. '{k}=0.5')"
-                        )
+                        raise TypeError(f"'{k}={v}' is of invalid type {type(v).__name__}. Valid '{k}' types are int (i.e. '{k}=0') or float (i.e. '{k}=0.5')")
                     cfg[k] = v = float(v)
-                valid = 0.0 <= v <= 1.0 or (k == "fraction" and isinstance(v, int) and v > 1)
-                if not valid or (k == "fraction" and v == 0.0):
+                valid = 0.0 <= v <= 1.0 or (k == 'fraction' and isinstance(v, int) and (v > 1))
+                if not valid or (k == 'fraction' and v == 0.0):
                     raise ValueError(f"'{k}={v}' invalid. Use integer count >1 or ratio (0, 1] for fraction.")
-                if k == "fraction" and v == 1:
+                if k == 'fraction' and v == 1:
                     cfg[k] = 1.0
             elif k in CFG_INT_KEYS:
                 if not isinstance(v, int):
                     if hard:
-                        raise TypeError(
-                            f"'{k}={v}' is of invalid type {type(v).__name__}. '{k}' must be an int (i.e. '{k}=8')"
-                        )
+                        raise TypeError(f"'{k}={v}' is of invalid type {type(v).__name__}. '{k}' must be an int (i.e. '{k}=8')")
                     cfg[k] = v = int(v)
                 if k in CFG_INT_MIN and v < CFG_INT_MIN[k]:
                     raise ValueError(f"'{k}={v}' is an invalid value. '{k}' must be >= {CFG_INT_MIN[k]}.")
-            elif k in CFG_BOOL_KEYS and not isinstance(v, bool):
+            elif k in CFG_BOOL_KEYS and (not isinstance(v, bool)):
                 if hard:
-                    raise TypeError(
-                        f"'{k}={v}' is of invalid type {type(v).__name__}. "
-                        f"'{k}' must be a bool (i.e. '{k}=True' or '{k}=False')"
-                    )
+                    raise TypeError(f"'{k}={v}' is of invalid type {type(v).__name__}. '{k}' must be a bool (i.e. '{k}=True' or '{k}=False')")
                 cfg[k] = bool(v)
-            elif k in CFG_STR_KEYS and not isinstance(v, str):
+            elif k in CFG_STR_KEYS and (not isinstance(v, str)):
                 if hard:
                     raise TypeError(f"'{k}={v}' is of invalid type {type(v).__name__}. '{k}' must be a str.")
                 cfg[k] = str(v)
-            elif k == "compile" and not isinstance(v, (bool, str)):  # False=off, True="default", or a mode string
+            elif k == 'compile' and (not isinstance(v, (bool, str))):
                 if hard:
-                    raise TypeError(
-                        f"'{k}={v}' is of invalid type {type(v).__name__}. "
-                        f"'{k}' must be a bool or str (i.e. '{k}=True' or '{k}=max-autotune')"
-                    )
+                    raise TypeError(f"'{k}={v}' is of invalid type {type(v).__name__}. '{k}' must be a bool or str (i.e. '{k}=True' or '{k}=max-autotune')")
                 cfg[k] = bool(v)
-            elif k == "amp":
-                if not isinstance(v, bool) and str(v).lower() not in {"fp16", "bf16", "fp32"}:
-                    raise ValueError(
-                        f"'{k}={v}' is invalid. Valid '{k}' values are True, False, 'fp16', 'bf16', or 'fp32'."
-                    )
+            elif k == 'amp':
+                if not isinstance(v, bool) and str(v).lower() not in {'fp16', 'bf16', 'fp32'}:
+                    raise ValueError(f"'{k}={v}' is invalid. Valid '{k}' values are True, False, 'fp16', 'bf16', or 'fp32'.")
                 cfg[k] = v.lower() if isinstance(v, str) else v
-            elif k == "quantize":  # canonicalize 8/16/32 or w-notation to a scheme (unset stays None for FP32)
+            elif k == 'quantize':
                 scheme = QUANTIZE_ALIASES.get(str(v).lower())
                 if scheme is None:
                     if hard:
-                        raise ValueError(
-                            f"'{k}={v}' is invalid. Valid '{k}' values are {QUANTIZE_VALID_VALUES}. "
-                            f"See {QUANTIZE_DOCS_URL}"
-                        )
+                        raise ValueError(f"'{k}={v}' is invalid. Valid '{k}' values are {QUANTIZE_VALID_VALUES}. See {QUANTIZE_DOCS_URL}")
                 else:
                     cfg[k] = scheme
 
-
-def get_save_dir(args: SimpleNamespace, name: str | None = None) -> Path:
+def get_save_dir(args, name=None):
     """Return the directory path for saving outputs, derived from arguments or default settings.
 
     Args:
@@ -538,25 +213,22 @@ def get_save_dir(args: SimpleNamespace, name: str | None = None) -> Path:
         >>> get_save_dir(args).parts[-3:]
         ('detect', 'my_project', 'exp')
     """
-    if getattr(args, "save_dir", None):
+    if getattr(args, 'save_dir', None):
         save_dir = args.save_dir
     else:
         from ultralytics.utils.files import increment_path
-
-        project = args.project or ""
+        project = args.project or ''
         if not Path(project).is_absolute():
-            base = ROOT.parent / "tests/tmp/runs" if TESTS_RUNNING else Path(SETTINGS["runs_dir"])
-            worker = os.environ.get("PYTEST_XDIST_WORKER")
-            if worker and TESTS_RUNNING:  # isolate parallel pytest-xdist workers
+            base = ROOT.parent / 'tests/tmp/runs' if TESTS_RUNNING else Path(SETTINGS['runs_dir'])
+            worker = os.environ.get('PYTEST_XDIST_WORKER')
+            if worker and TESTS_RUNNING:
                 base = base / worker
             project = base / args.task / project
-        name = name or args.name or f"{args.mode}"
+        name = name or args.name or f'{args.mode}'
         save_dir = increment_path(Path(project) / name, exist_ok=args.exist_ok if RANK in {-1, 0} else True)
+    return Path(save_dir).resolve()
 
-    return Path(save_dir).resolve()  # resolve to display full path in console
-
-
-def _handle_deprecation(custom: dict) -> dict:
+def _handle_deprecation(custom):
     """Handle deprecated configuration keys by mapping them to current equivalents with deprecation warnings.
 
     Args:
@@ -575,51 +247,35 @@ def _handle_deprecation(custom: dict) -> dict:
         equivalents. It also handles value conversions where necessary, such as inverting boolean values for
         'hide_labels' and 'hide_conf'.
     """
-    deprecated_mappings = {
-        "boxes": ("show_boxes", lambda v: v),
-        "hide_labels": ("show_labels", lambda v: not bool(v)),
-        "hide_conf": ("show_conf", lambda v: not bool(v)),
-        "line_thickness": ("line_width", lambda v: v),
-    }
-    removed_keys = {"label_smoothing", "save_hybrid", "crop_fraction"}
-
-    if "end2end" in custom:
-        end2end = custom.pop("end2end")
+    deprecated_mappings = {'boxes': ('show_boxes', lambda v: v), 'hide_labels': ('show_labels', lambda v: not bool(v)), 'hide_conf': ('show_conf', lambda v: not bool(v)), 'line_thickness': ('line_width', lambda v: v)}
+    removed_keys = {'label_smoothing', 'save_hybrid', 'crop_fraction'}
+    if 'end2end' in custom:
+        end2end = custom.pop('end2end')
         if end2end is not None:
             if not isinstance(end2end, bool):
                 raise TypeError("Deprecated 'end2end' must be a bool.")
-            custom["nms"] = False if end2end else True if custom.get("nms") is True else None
-            deprecation_warn(f"end2end={end2end}", f"nms={custom.get('nms')}")
-
-    # Forward the deprecated precision flags onto the unified `quantize` scheme (int8 wins over half). The value is read
-    # as a bool so quoted/string 'False' disables it while a bare CLI flag (empty string) enables it; an explicit false
-    # flag maps to None to clear any inherited quantize. An explicit `quantize=` always wins over the legacy flags.
-    int8 = custom.pop("int8", None)
-    half = custom.pop("half", None)
-    if (int8 is not None or half is not None) and "quantize" not in custom:
-        int8_on = int8 is not None and str(int8).strip().lower() not in {"none", "false", "0"}
-        half_on = half is not None and str(half).strip().lower() not in {"none", "false", "0"}
-        custom["quantize"] = 8 if int8_on else 16 if half_on else None  # False/0 clears precision back to FP32
-        deprecation_warn("int8" if int8 is not None else "half", "quantize")
-
-    for old_key, (new_key, transform) in deprecated_mappings.items():
+            custom['nms'] = False if end2end else True if custom.get('nms') is True else None
+            deprecation_warn(f'end2end={end2end}', f"nms={custom.get('nms')}")
+    int8 = custom.pop('int8', None)
+    half = custom.pop('half', None)
+    if (int8 is not None or half is not None) and 'quantize' not in custom:
+        int8_on = int8 is not None and str(int8).strip().lower() not in {'none', 'false', '0'}
+        half_on = half is not None and str(half).strip().lower() not in {'none', 'false', '0'}
+        custom['quantize'] = 8 if int8_on else 16 if half_on else None
+        deprecation_warn('int8' if int8 is not None else 'half', 'quantize')
+    for (old_key, (new_key, transform)) in deprecated_mappings.items():
         if old_key not in custom:
             continue
         deprecation_warn(old_key, new_key)
         custom[new_key] = transform(custom.pop(old_key))
-
     for key in removed_keys:
         if key not in custom:
             continue
         deprecation_warn(key)
         custom.pop(key)
-
     return custom
 
-
-def check_dict_alignment(
-    base: dict, custom: dict, e: Exception | None = None, allowed_custom_keys: set | None = None
-) -> None:
+def check_dict_alignment(base, custom, e=None, allowed_custom_keys=None):
     """Check alignment between custom and base configuration dictionaries, handling deprecated keys and providing error
     messages for mismatched keys.
 
@@ -647,25 +303,22 @@ def check_dict_alignment(
         - Prints detailed error messages for each mismatched key to help users correct their configurations.
     """
     custom = _handle_deprecation(custom)
-    base_keys, custom_keys = (frozenset(x.keys()) for x in (base, custom))
-    # Allow 'augmentations' as a valid custom parameter for custom Albumentations transforms
+    (base_keys, custom_keys) = (frozenset(x.keys()) for x in (base, custom))
     if allowed_custom_keys is None:
-        allowed_custom_keys = {"augmentations", "save_dir"}
+        allowed_custom_keys = {'augmentations', 'save_dir'}
     mismatched = [k for k in custom_keys if k not in base_keys and k not in allowed_custom_keys]
     if mismatched:
         from difflib import get_close_matches
-
-        string = ""
+        string = ''
         for x in mismatched:
-            matches = get_close_matches(x, base_keys)  # key list
-            matches = [f"{k}={base[k]}" if base.get(k) is not None else k for k in matches]
-            match_str = f"Similar arguments are i.e. {matches}." if matches else ""
+            matches = get_close_matches(x, base_keys)
+            matches = [f'{k}={base[k]}' if base.get(k) is not None else k for k in matches]
+            match_str = f'Similar arguments are i.e. {matches}.' if matches else ''
             string += f"'{colorstr('red', 'bold', x)}' is not a valid YOLO argument. {match_str}\n"
         LOGGER.info(CLI_HELP_MSG)
         raise SyntaxError(string) from e
 
-
-def merge_equals_args(args: list[str]) -> list[str]:
+def merge_equals_args(args):
     """Merge arguments around isolated '=' in a list of strings and join fragments with brackets.
 
     This function handles the following cases:
@@ -687,71 +340,55 @@ def merge_equals_args(args: list[str]) -> list[str]:
         ['arg1=value', 'arg2=value2', 'arg3=value3', 'imgsz=[3,640,640]']
     """
     new_args = []
-    current = ""
+    current = ''
     depth = 0
-
     i = 0
     while i < len(args):
         arg = args[i]
-
-        # Handle equals sign merging
-        if arg == "=" and 0 < i < len(args) - 1:  # merge ['arg', '=', 'val']
-            new_args[-1] += f"={args[i + 1]}"
+        if arg == '=' and 0 < i < len(args) - 1:
+            new_args[-1] += f'={args[i + 1]}'
             i += 2
             continue
-        elif arg.endswith("=") and i < len(args) - 1 and "=" not in args[i + 1]:  # merge ['arg=', 'val']
-            new_args.append(f"{arg}{args[i + 1]}")
+        elif arg.endswith('=') and i < len(args) - 1 and ('=' not in args[i + 1]):
+            new_args.append(f'{arg}{args[i + 1]}')
             i += 2
             continue
-        elif arg.startswith("=") and i > 0:  # merge ['arg', '=val']
+        elif arg.startswith('=') and i > 0:
             new_args[-1] += arg
             i += 1
             continue
-
-        # Handle bracket joining
-        depth += arg.count("[") - arg.count("]")
+        depth += arg.count('[') - arg.count(']')
         current += arg
         if depth == 0:
             new_args.append(current)
-            current = ""
-
+            current = ''
         i += 1
-
-    # Append any remaining current string
     if current:
         new_args.append(current)
-
     return new_args
 
-
-def handle_yolo_login(args: list[str]) -> None:
+def handle_yolo_login(args):
     """Log in to Ultralytics Platform with an API key or remove the saved key."""
-    if args[0] == "logout":
-        SETTINGS["api_key"] = ""
+    if args[0] == 'logout':
+        SETTINGS['api_key'] = ''
         LOGGER.info("Logged out ✅. To log in again, use 'yolo login API_KEY'.")
         return
-
-    api_key_url = f"{PLATFORM_URL}/settings?tab=api-keys"
+    api_key_url = f'{PLATFORM_URL}/settings?tab=api-keys'
     if len(args) < 2:
         LOGGER.info(f"Get an API key from {api_key_url} and then run 'yolo login API_KEY'.")
         return
-
     from ultralytics import APIConnectionError, APIError, Platform
-
     try:
         with Platform(api_key=args[1], base_url=PLATFORM_URL, timeout=30) as client:
             client.account.summary()
-        SETTINGS["api_key"] = args[1]
-        LOGGER.info("New authentication successful ✅")
+        SETTINGS['api_key'] = args[1]
+        LOGGER.info('New authentication successful ✅')
     except APIError as error:
-        raise SystemExit(
-            "Invalid API key" if error.status_code == 401 else f"Authentication failed (HTTP {error.status_code})"
-        ) from None
+        raise SystemExit('Invalid API key' if error.status_code == 401 else f'Authentication failed (HTTP {error.status_code})') from None
     except APIConnectionError as error:
-        raise SystemExit(f"Authentication request failed, check your connection: {error}") from None
+        raise SystemExit(f'Authentication request failed, check your connection: {error}') from None
 
-
-def handle_yolo_settings(args: list[str]) -> None:
+def handle_yolo_settings(args):
     """Handle YOLO settings command-line interface (CLI) commands.
 
     This function processes YOLO settings CLI commands such as reset and updating individual settings. It should be
@@ -773,27 +410,25 @@ def handle_yolo_settings(args: list[str]) -> None:
         - For more information on handling YOLO settings, visit:
           https://docs.ultralytics.com/usage/settings
     """
-    url = "https://docs.ultralytics.com/usage/settings"  # help URL
+    url = 'https://docs.ultralytics.com/usage/settings'
     try:
         if any(args):
-            if args[0] == "reset":
-                SETTINGS_FILE.unlink()  # delete the settings file
-                SETTINGS.reset()  # create new settings
-                LOGGER.info("Settings reset successfully")  # inform the user that settings have been reset
-            else:  # save a new setting
-                new = dict(parse_key_value_pair(a) for a in args)
+            if args[0] == 'reset':
+                SETTINGS_FILE.unlink()
+                SETTINGS.reset()
+                LOGGER.info('Settings reset successfully')
+            else:
+                new = dict((parse_key_value_pair(a) for a in args))
                 check_dict_alignment(SETTINGS, new)
                 SETTINGS.update(new)
-                for k, v in new.items():
+                for (k, v) in new.items():
                     LOGGER.info(f"✅ Updated '{k}={v}'")
-
-        LOGGER.info(SETTINGS)  # print the current settings
-        LOGGER.info(f"💡 Learn more about Ultralytics Settings at {url}")
+        LOGGER.info(SETTINGS)
+        LOGGER.info(f'💡 Learn more about Ultralytics Settings at {url}')
     except Exception as e:
         LOGGER.warning(f"settings error: '{e}'. Please see {url} for help.")
 
-
-def handle_yolo_solutions(args: list[str]) -> None:
+def handle_yolo_solutions(args):
     """Process YOLO solutions arguments and run the specified computer vision solutions pipeline.
 
     Args:
@@ -822,89 +457,62 @@ def handle_yolo_solutions(args: list[str]) -> None:
         - The Streamlit app file is located in the Ultralytics package directory.
     """
     from ultralytics.solutions.config import SolutionConfig
-
-    full_args_dict = vars(SolutionConfig())  # arguments dictionary
+    full_args_dict = vars(SolutionConfig())
     overrides = {}
-
-    # check dictionary alignment
     for arg in merge_equals_args(args):
-        arg = arg.lstrip("-").rstrip(",")
-        if "=" in arg:
+        arg = arg.lstrip('-').rstrip(',')
+        if '=' in arg:
             try:
-                k, v = parse_key_value_pair(arg)
+                (k, v) = parse_key_value_pair(arg)
                 overrides[k] = v
             except (NameError, SyntaxError, ValueError, AssertionError) as e:
-                check_dict_alignment(full_args_dict, {arg: ""}, e)
+                check_dict_alignment(full_args_dict, {arg: ''}, e)
         elif arg in full_args_dict and isinstance(full_args_dict.get(arg), bool):
             overrides[arg] = True
-    check_dict_alignment(full_args_dict, overrides)  # dict alignment
-
-    # Get solution name
+    check_dict_alignment(full_args_dict, overrides)
     if not args:
         LOGGER.warning("No solution name provided. i.e `yolo solutions count`. Defaulting to 'count'.")
-        args = ["count"]
-    if args[0] == "help":
+        args = ['count']
+    if args[0] == 'help':
         LOGGER.info(SOLUTIONS_HELP_MSG)
-        return  # Early return for 'help' case
+        return
     elif args[0] in SOLUTION_MAP:
-        solution_name = args.pop(0)  # Extract the solution name directly
+        solution_name = args.pop(0)
     else:
-        LOGGER.warning(
-            f"❌ '{args[0]}' is not a valid solution. 💡 Defaulting to 'count'.\n"
-            f"🚀 Available solutions: {', '.join(list(SOLUTION_MAP.keys())[:-1])}\n"
-        )
-        solution_name = "count"  # Default for invalid solution
-
-    if solution_name == "inference":
-        checks.check_requirements("streamlit>=1.29.0")
-        LOGGER.info("💡 Loading Ultralytics live inference app...")
-        subprocess.run(
-            [  # Run subprocess with Streamlit custom argument
-                "streamlit",
-                "run",
-                str(ROOT / "solutions/streamlit_inference.py"),
-                "--server.headless",
-                "true",
-                overrides.pop("model", "yolo26n.pt"),
-            ],
-            check=False,
-        )
+        LOGGER.warning(f"❌ '{args[0]}' is not a valid solution. 💡 Defaulting to 'count'.\n🚀 Available solutions: {', '.join(list(SOLUTION_MAP.keys())[:-1])}\n")
+        solution_name = 'count'
+    if solution_name == 'inference':
+        checks.check_requirements('streamlit>=1.29.0')
+        LOGGER.info('💡 Loading Ultralytics live inference app...')
+        subprocess.run(['streamlit', 'run', str(ROOT / 'solutions/streamlit_inference.py'), '--server.headless', 'true', overrides.pop('model', 'yolo26n.pt')], check=False)
     else:
-        import cv2  # Only needed for cap and vw functionality
-
+        import cv2
         from ultralytics import solutions
-
-        solution = getattr(solutions, SOLUTION_MAP[solution_name])(is_cli=True, **overrides)  # class i.e. ObjectCounter
-
-        cap = cv2.VideoCapture(solution.CFG["source"])  # read the video file
-        if solution_name != "crop":
-            # extract width, height and fps of the video file, create save directory and initialize video writer
-            w, h, fps = (
-                int(cap.get(x)) for x in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT, cv2.CAP_PROP_FPS)
-            )
-            if solution_name == "analytics":  # analytical graphs follow fixed shape for output i.e w=1280, h=720
-                w, h = 1280, 720
-            save_dir = get_save_dir(SimpleNamespace(task="solutions", name="exp", exist_ok=False, project=None))
-            save_dir.mkdir(parents=True, exist_ok=True)  # create the output directory i.e. runs/solutions/exp
-            vw = cv2.VideoWriter(str(save_dir / f"{solution_name}.avi"), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
-
-        try:  # Process video frames
-            f_n = 0  # frame number, required for analytical graphs
+        solution = getattr(solutions, SOLUTION_MAP[solution_name])(is_cli=True, **overrides)
+        cap = cv2.VideoCapture(solution.CFG['source'])
+        if solution_name != 'crop':
+            (w, h, fps) = (int(cap.get(x)) for x in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT, cv2.CAP_PROP_FPS))
+            if solution_name == 'analytics':
+                (w, h) = (1280, 720)
+            save_dir = get_save_dir(SimpleNamespace(task='solutions', name='exp', exist_ok=False, project=None))
+            save_dir.mkdir(parents=True, exist_ok=True)
+            vw = cv2.VideoWriter(str(save_dir / f'{solution_name}.avi'), cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+        try:
+            f_n = 0
             while cap.isOpened():
-                success, frame = cap.read()
+                (success, frame) = cap.read()
                 if not success:
                     break
                 f_n = f_n + 1
-                results = solution(frame, f_n) if solution_name == "analytics" else solution(frame)
-                if solution_name != "crop":
+                results = solution(frame, f_n) if solution_name == 'analytics' else solution(frame)
+                if solution_name != 'crop':
                     vw.write(results.plot_im)
-                if solution.CFG["show"] and cv2.waitKey(1) & 0xFF == ord("q"):
+                if solution.CFG['show'] and cv2.waitKey(1) & 255 == ord('q'):
                     break
         finally:
             cap.release()
 
-
-def parse_key_value_pair(pair: str = "key=value") -> tuple:
+def parse_key_value_pair(pair='key=value'):
     """Parse a key-value pair string into separate key and value components.
 
     Args:
@@ -931,13 +539,12 @@ def parse_key_value_pair(pair: str = "key=value") -> tuple:
         - Leading and trailing whitespace is removed from both key and value.
         - An assertion error is raised if the value is empty after stripping.
     """
-    k, v = pair.split("=", 1)  # split on first '=' sign
-    k, v = k.strip(), v.strip()  # remove spaces
+    (k, v) = pair.split('=', 1)
+    (k, v) = (k.strip(), v.strip())
     assert v, f"missing '{k}' value"
-    return k, smart_value(v)
+    return (k, smart_value(v))
 
-
-def smart_value(v: str) -> Any:
+def smart_value(v):
     """Convert a string representation of a value to its appropriate Python type.
 
     This function attempts to convert a given string into a Python object of the most appropriate type. It handles
@@ -968,17 +575,17 @@ def smart_value(v: str) -> Any:
         - If no conversion is possible, the original string is returned.
     """
     v_lower = v.lower()
-    if v_lower == "none":
+    if v_lower == 'none':
         return None
-    elif v_lower == "true":
+    elif v_lower == 'true':
         return True
-    elif v_lower == "false":
+    elif v_lower == 'false':
         return False
     else:
         try:
             return ast.literal_eval(v)
         except Exception:
-            name, _, attr = v.rpartition(".")
+            (name, _, attr) = v.rpartition('.')
             module = sys.modules.get(name)
             if module and attr.isupper():
                 value = getattr(module, attr, None)
@@ -986,8 +593,7 @@ def smart_value(v: str) -> Any:
                     return value
             return v
 
-
-def entrypoint(debug: str = "") -> None:
+def entrypoint(debug=''):
     """Ultralytics entrypoint function for parsing and executing command-line arguments.
 
     This function serves as the main entry point for the Ultralytics CLI, parsing command-line arguments and executing
@@ -1011,159 +617,108 @@ def entrypoint(debug: str = "") -> None:
         - For a list of all available commands and their arguments, see the provided help messages and the
           Ultralytics documentation at https://docs.ultralytics.com.
     """
-    args = (debug.split(" ") if debug else ARGV)[1:]
-    if not args:  # no arguments passed
+    args = (debug.split(' ') if debug else ARGV)[1:]
+    if not args:
         LOGGER.info(CLI_HELP_MSG)
         return
-
-    special = {
-        "checks": checks.collect_system_info,
-        "version": lambda: LOGGER.info(__version__),
-        "settings": lambda: handle_yolo_settings(args[1:]),
-        "cfg": lambda: YAML.print(DEFAULT_CFG_PATH),
-        "login": lambda: handle_yolo_login(args),
-        "logout": lambda: handle_yolo_login(args),
-        "copy-cfg": copy_default_cfg,
-        "solutions": lambda: handle_yolo_solutions(args[1:]),
-        "help": lambda: LOGGER.info(CLI_HELP_MSG),
-    }
+    special = {'checks': checks.collect_system_info, 'version': lambda : LOGGER.info(__version__), 'settings': lambda : handle_yolo_settings(args[1:]), 'cfg': lambda : YAML.print(DEFAULT_CFG_PATH), 'login': lambda : handle_yolo_login(args), 'logout': lambda : handle_yolo_login(args), 'copy-cfg': copy_default_cfg, 'solutions': lambda : handle_yolo_solutions(args[1:]), 'help': lambda : LOGGER.info(CLI_HELP_MSG)}
     full_args_dict = {**DEFAULT_CFG_DICT, **{k: None for k in TASKS}, **{k: None for k in MODES}, **special}
-
-    # Define common misuses of special commands, i.e. -h, -help, --help
-    special.update({k[0]: v for k, v in special.items()})  # singular
-    special.update({k[:-1]: v for k, v in special.items() if len(k) > 1 and k.endswith("s")})  # singular
-    special = {**special, **{f"-{k}": v for k, v in special.items()}, **{f"--{k}": v for k, v in special.items()}}
-
-    overrides = {}  # basic overrides, i.e. imgsz=320
-    for a in merge_equals_args(args):  # merge spaces around '=' sign
-        if a.startswith("--"):
+    special.update({k[0]: v for (k, v) in special.items()})
+    special.update({k[:-1]: v for (k, v) in special.items() if len(k) > 1 and k.endswith('s')})
+    special = {**special, **{f'-{k}': v for (k, v) in special.items()}, **{f'--{k}': v for (k, v) in special.items()}}
+    overrides = {}
+    for a in merge_equals_args(args):
+        if a.startswith('--'):
             LOGGER.warning(f"argument '{a}' does not require leading dashes '--', updating to '{a[2:]}'.")
             a = a[2:]
-        if a.endswith(","):
+        if a.endswith(','):
             LOGGER.warning(f"argument '{a}' does not require trailing comma ',', updating to '{a[:-1]}'.")
             a = a[:-1]
-        if "=" in a:
+        if '=' in a:
             try:
-                k, v = parse_key_value_pair(a)
-                if k == "cfg" and v is not None:  # custom.yaml passed
-                    LOGGER.info(f"Overriding {DEFAULT_CFG_PATH} with {v}")
-                    overrides = {
-                        **{k: val for k, val in YAML.load(checks.check_yaml(v)).items() if k != "cfg"},
-                        **overrides,
-                    }
+                (k, v) = parse_key_value_pair(a)
+                if k == 'cfg' and v is not None:
+                    LOGGER.info(f'Overriding {DEFAULT_CFG_PATH} with {v}')
+                    overrides = {**{k: val for (k, val) in YAML.load(checks.check_yaml(v)).items() if k != 'cfg'}, **overrides}
                 else:
                     overrides[k] = v
             except (NameError, SyntaxError, ValueError, AssertionError) as e:
-                check_dict_alignment(full_args_dict, {a: ""}, e)
-
+                check_dict_alignment(full_args_dict, {a: ''}, e)
         elif a in TASKS:
-            overrides["task"] = a
+            overrides['task'] = a
         elif a in MODES:
-            overrides["mode"] = a
+            overrides['mode'] = a
         elif a.lower() in special:
             special[a.lower()]()
             return
         elif a in DEFAULT_CFG_DICT and isinstance(DEFAULT_CFG_DICT[a], bool):
-            overrides[a] = True  # auto-True for default bool args, i.e. 'yolo show' sets show=True
-        elif a in {"half", "int8", "end2end", "nms"}:
-            overrides[a] = True  # bare boolean flags whose defaults are missing or None
+            overrides[a] = True
+        elif a in {'half', 'int8', 'end2end', 'nms'}:
+            overrides[a] = True
         elif a in DEFAULT_CFG_DICT:
-            raise SyntaxError(
-                f"'{colorstr('red', 'bold', a)}' is a valid YOLO argument but is missing an '=' sign "
-                f"to set its value, i.e. try '{a}={DEFAULT_CFG_DICT[a]}'\n{CLI_HELP_MSG}"
-            )
+            raise SyntaxError(f"'{colorstr('red', 'bold', a)}' is a valid YOLO argument but is missing an '=' sign to set its value, i.e. try '{a}={DEFAULT_CFG_DICT[a]}'\n{CLI_HELP_MSG}")
         else:
-            check_dict_alignment(full_args_dict, {a: ""})
-
-    # Check keys
+            check_dict_alignment(full_args_dict, {a: ''})
     check_dict_alignment(full_args_dict, overrides)
-
-    # Mode
-    mode = overrides.get("mode")
+    mode = overrides.get('mode')
     if mode is None:
-        mode = DEFAULT_CFG.mode or "predict"
+        mode = DEFAULT_CFG.mode or 'predict'
         LOGGER.warning(f"'mode' argument is missing. Valid modes are {list(MODES)}. Using default 'mode={mode}'.")
     elif mode not in MODES:
         raise ValueError(f"Invalid 'mode={mode}'. Valid modes are {list(MODES)}.\n{CLI_HELP_MSG}")
-
-    # Task
-    task = overrides.pop("task", None)
+    task = overrides.pop('task', None)
     if task:
         if task not in TASKS:
-            if task == "track":
-                LOGGER.warning(
-                    f"invalid 'task=track', setting 'task=detect' and 'mode=track'. Valid tasks are {list(TASKS)}.\n{CLI_HELP_MSG}."
-                )
-                task, mode = "detect", "track"
+            if task == 'track':
+                LOGGER.warning(f"invalid 'task=track', setting 'task=detect' and 'mode=track'. Valid tasks are {list(TASKS)}.\n{CLI_HELP_MSG}.")
+                (task, mode) = ('detect', 'track')
             else:
                 raise ValueError(f"Invalid 'task={task}'. Valid tasks are {list(TASKS)}.\n{CLI_HELP_MSG}")
-        if "model" not in overrides:
-            overrides["model"] = TASK2MODEL[task]
-
-    # Model
-    model = overrides.pop("model", DEFAULT_CFG.model)
+        if 'model' not in overrides:
+            overrides['model'] = TASK2MODEL[task]
+    model = overrides.pop('model', DEFAULT_CFG.model)
     if model is None:
-        model = "yolo26n.pt"
+        model = 'yolo26n.pt'
         LOGGER.warning(f"'model' argument is missing. Using default 'model={model}'.")
-    overrides["model"] = model
+    overrides['model'] = model
     stem = Path(model).stem.lower()
-    if "rtdetr" in stem:  # guess architecture
+    if 'rtdetr' in stem:
         from ultralytics import RTDETR
-
-        model = RTDETR(model)  # no task argument
-    elif "fastsam" in stem:
+        model = RTDETR(model)
+    elif 'fastsam' in stem:
         from ultralytics import FastSAM
-
         model = FastSAM(model)
-    elif "sam_" in stem or "sam2_" in stem or "sam2.1_" in stem:
+    elif 'sam_' in stem or 'sam2_' in stem or 'sam2.1_' in stem:
         from ultralytics import SAM
-
         model = SAM(model)
     else:
         from ultralytics import YOLO
-
         model = YOLO(model, task=task)
-        if "yoloe" in stem or "world" in stem:
-            cls_list = overrides.get("classes", DEFAULT_CFG.classes)
-            if isinstance(cls_list, str):  # text prompts, i.e. "person, bus" -> ['person', 'bus']
-                model.set_classes([c.strip() for c in overrides.pop("classes", cls_list).split(",")])
-    # Task Update
+        if 'yoloe' in stem or 'world' in stem:
+            cls_list = overrides.get('classes', DEFAULT_CFG.classes)
+            if isinstance(cls_list, str):
+                model.set_classes([c.strip() for c in overrides.pop('classes', cls_list).split(',')])
     if task != model.task:
         if task:
-            LOGGER.warning(
-                f"conflicting 'task={task}' passed with 'task={model.task}' model. "
-                f"Ignoring 'task={task}' and updating to 'task={model.task}' to match model."
-            )
+            LOGGER.warning(f"conflicting 'task={task}' passed with 'task={model.task}' model. Ignoring 'task={task}' and updating to 'task={model.task}' to match model.")
         task = model.task
-
-    # Mode
-    if mode in {"predict", "track"} and "source" not in overrides:
-        overrides["source"] = (
-            "https://ultralytics.com/images/boats.jpg" if task == "obb" else DEFAULT_CFG.source or ASSETS
-        )
+    if mode in {'predict', 'track'} and 'source' not in overrides:
+        overrides['source'] = 'https://ultralytics.com/images/boats.jpg' if task == 'obb' else DEFAULT_CFG.source or ASSETS
         LOGGER.warning(f"'source' argument is missing. Using default 'source={overrides['source']}'.")
-    elif mode in {"train", "val"}:
-        if overrides.get("data") is None and not overrides.get("resume"):
-            overrides["data"] = DEFAULT_CFG.data or TASK2DATA.get(task or DEFAULT_CFG.task, DEFAULT_CFG.data)
+    elif mode in {'train', 'val'}:
+        if overrides.get('data') is None and (not overrides.get('resume')):
+            overrides['data'] = DEFAULT_CFG.data or TASK2DATA.get(task or DEFAULT_CFG.task, DEFAULT_CFG.data)
             LOGGER.warning(f"'data' argument is missing. Using default 'data={overrides['data']}'.")
-    elif mode == "export":
-        if "format" not in overrides:
-            overrides["format"] = DEFAULT_CFG.format or "torchscript"
+    elif mode == 'export':
+        if 'format' not in overrides:
+            overrides['format'] = DEFAULT_CFG.format or 'torchscript'
             LOGGER.warning(f"'format' argument is missing. Using default 'format={overrides['format']}'.")
-
-    # Run command in python
-    getattr(model, mode)(**overrides)  # default args from model
-
-    # Show help
-    LOGGER.info(f"💡 Learn more at https://docs.ultralytics.com/modes/{mode}")
-
-    # Recommend VS Code extension
-    if IS_VSCODE and SETTINGS.get("vscode_msg", True):
+    getattr(model, mode)(**overrides)
+    LOGGER.info(f'💡 Learn more at https://docs.ultralytics.com/modes/{mode}')
+    if IS_VSCODE and SETTINGS.get('vscode_msg', True):
         LOGGER.info(vscode_msg())
 
-
-# Special modes --------------------------------------------------------------------------------------------------------
-def copy_default_cfg() -> None:
+def copy_default_cfg():
     """Copy the default configuration file and create a new one with '_copy' appended to its name.
 
     This function duplicates the existing default configuration file (DEFAULT_CFG_PATH) and saves it with '_copy'
@@ -1180,14 +735,8 @@ def copy_default_cfg() -> None:
         - This function is useful for users who want to modify the default configuration without
           altering the original file.
     """
-    new_file = Path.cwd() / DEFAULT_CFG_PATH.name.replace(".yaml", "_copy.yaml")
+    new_file = Path.cwd() / DEFAULT_CFG_PATH.name.replace('.yaml', '_copy.yaml')
     shutil.copy2(DEFAULT_CFG_PATH, new_file)
-    LOGGER.info(
-        f"{DEFAULT_CFG_PATH} copied to {new_file}\n"
-        f"Example YOLO command with this new custom cfg:\n    yolo cfg='{new_file}' imgsz=320 batch=8"
-    )
-
-
-if __name__ == "__main__":
-    # Example: entrypoint(debug='yolo predict model=yolo26n.pt')
-    entrypoint(debug="")
+    LOGGER.info(f"{DEFAULT_CFG_PATH} copied to {new_file}\nExample YOLO command with this new custom cfg:\n    yolo cfg='{new_file}' imgsz=320 batch=8")
+if __name__ == '__main__':
+    entrypoint(debug='')

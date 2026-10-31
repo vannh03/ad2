@@ -1,16 +1,9 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from copy import copy
-
 from ultralytics.data.utils import get_split_fraction
 from ultralytics.models.yolo.detect import DetectionTrainer
 from ultralytics.nn.tasks import RTDETRDetectionModel
 from ultralytics.utils import RANK, colorstr
-
 from .val import RTDETRDataset, RTDETRValidator
-
 
 class RTDETRTrainer(DetectionTrainer):
     """Trainer class for the RT-DETR model developed by Baidu for real-time object detection.
@@ -42,7 +35,7 @@ class RTDETRTrainer(DetectionTrainer):
         - AMP training can lead to NaN outputs and may produce errors during bipartite graph matching.
     """
 
-    def get_model(self, cfg: dict | None = None, weights: str | None = None, verbose: bool = True):
+    def get_model(self, cfg=None, weights=None, verbose=True):
         """Initialize and return an RT-DETR model for object detection tasks.
 
         Args:
@@ -53,14 +46,12 @@ class RTDETRTrainer(DetectionTrainer):
         Returns:
             (RTDETRDetectionModel): Initialized model.
         """
-        model = self.set_model_names_for_load(
-            RTDETRDetectionModel(cfg, nc=self.data["nc"], ch=self.data["channels"], verbose=verbose and RANK == -1)
-        )
+        model = self.set_model_names_for_load(RTDETRDetectionModel(cfg, nc=self.data['nc'], ch=self.data['channels'], verbose=verbose and RANK == -1))
         if weights:
             model.load(weights)
         return model
 
-    def build_dataset(self, img_path: str, mode: str = "val", batch: int | None = None):
+    def build_dataset(self, img_path, mode='val', batch=None):
         """Build and return an RT-DETR dataset for training or validation.
 
         Args:
@@ -71,20 +62,7 @@ class RTDETRTrainer(DetectionTrainer):
         Returns:
             (RTDETRDataset): Dataset object for the specific mode.
         """
-        return RTDETRDataset(
-            img_path=img_path,
-            imgsz=self.args.imgsz,
-            batch_size=batch,
-            augment=mode == "train",
-            hyp=self.args,
-            rect=False,
-            cache=self.args.cache or None,
-            single_cls=self.args.single_cls or False,
-            prefix=colorstr(f"{mode}: "),
-            classes=self.args.classes,
-            data=self.data,
-            fraction=1.0 if self.data.get("complete") else get_split_fraction(self.args.fraction, mode),
-        )
+        return RTDETRDataset(img_path=img_path, imgsz=self.args.imgsz, batch_size=batch, augment=mode == 'train', hyp=self.args, rect=False, cache=self.args.cache or None, single_cls=self.args.single_cls or False, prefix=colorstr(f'{mode}: '), classes=self.args.classes, data=self.data, fraction=1.0 if self.data.get('complete') else get_split_fraction(self.args.fraction, mode))
 
     def get_validator(self):
         """Return an RTDETRValidator suitable for RT-DETR model validation."""

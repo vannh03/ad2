@@ -1,13 +1,8 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 from typing import Any
-
 import cv2
 import numpy as np
-
 from ultralytics.solutions.solutions import BaseSolution, SolutionAnnotator, SolutionResults
 from ultralytics.utils.plotting import colors
-
 
 class TrackZone(BaseSolution):
     """A class to manage region-based object tracking in a video stream.
@@ -35,7 +30,7 @@ class TrackZone(BaseSolution):
         >>> cv2.imshow("Tracked Frame", results.plot_im)
     """
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs):
         """Initialize the TrackZone class for tracking objects within a defined region in video streams.
 
         Args:
@@ -46,7 +41,7 @@ class TrackZone(BaseSolution):
         self.region = cv2.convexHull(np.array(self.region or default_region, dtype=np.int32))
         self.mask = None
 
-    def process(self, im0: np.ndarray) -> SolutionResults:
+    def process(self, im0):
         """Process the input frame to track objects within a defined region.
 
         This method initializes the annotator, creates a mask for the specified region, extracts tracks only from the
@@ -64,25 +59,15 @@ class TrackZone(BaseSolution):
             >>> frame = cv2.imread("path/to/image.jpg")
             >>> results = tracker.process(frame)
         """
-        annotator = SolutionAnnotator(im0, line_width=self.line_width)  # Initialize annotator
-
-        if self.mask is None:  # Create a mask for the region
+        annotator = SolutionAnnotator(im0, line_width=self.line_width)
+        if self.mask is None:
             self.mask = np.zeros_like(im0[:, :, 0])
             cv2.fillPoly(self.mask, [self.region], 255)
         masked_frame = cv2.bitwise_and(im0, im0, mask=self.mask)
         self.extract_tracks(masked_frame)
-
-        # Draw the region boundary
         cv2.polylines(im0, [self.region], isClosed=True, color=(255, 255, 255), thickness=self.line_width * 2)
-
-        # Iterate over boxes, track ids, classes indexes list and draw bounding boxes
-        for box, track_id, cls, conf in zip(self.boxes, self.track_ids, self.clss, self.confs):
-            annotator.box_label(
-                box, label=self.adjust_box_label(cls, conf, track_id=track_id), color=colors(track_id, True)
-            )
-
+        for (box, track_id, cls, conf) in zip(self.boxes, self.track_ids, self.clss, self.confs):
+            annotator.box_label(box, label=self.adjust_box_label(cls, conf, track_id=track_id), color=colors(track_id, True))
         plot_im = annotator.result()
-        self.display_output(plot_im)  # Display output with base class function
-
-        # Return a SolutionResults
+        self.display_output(plot_im)
         return SolutionResults(plot_im=plot_im, total_tracks=len(self.track_ids))

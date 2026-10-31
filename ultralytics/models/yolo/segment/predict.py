@@ -1,11 +1,6 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo.detect.predict import DetectionPredictor
 from ultralytics.utils import DEFAULT_CFG, ops
-
 
 class SegmentationPredictor(DetectionPredictor):
     """A class extending the DetectionPredictor class for prediction based on a segmentation model.
@@ -31,7 +26,7 @@ class SegmentationPredictor(DetectionPredictor):
         >>> predictor.predict_cli()
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks: dict | None = None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize the SegmentationPredictor with configuration, overrides, and callbacks.
 
         This class specializes in processing segmentation model outputs, handling both bounding boxes and masks in the
@@ -43,7 +38,7 @@ class SegmentationPredictor(DetectionPredictor):
             _callbacks (dict, optional): Dictionary of callback functions to be invoked during prediction.
         """
         super().__init__(cfg, overrides, _callbacks)
-        self.args.task = "segment"
+        self.args.task = 'segment'
 
     def postprocess(self, preds, img, orig_imgs):
         """Apply non-max suppression and process segmentation detections for each image in the input batch.
@@ -61,7 +56,6 @@ class SegmentationPredictor(DetectionPredictor):
             >>> predictor = SegmentationPredictor(overrides=dict(model="yolo26n-seg.pt"))
             >>> results = predictor.postprocess(preds, img, orig_img)
         """
-        # Extract protos - tuple if PyTorch model or array if exported
         protos = preds[0][1] if isinstance(preds[0], tuple) else preds[1]
         return super().postprocess(preds[0], img, orig_imgs, protos=protos)
 
@@ -78,10 +72,7 @@ class SegmentationPredictor(DetectionPredictor):
             (list[Results]): List of result objects containing the original images, image paths, class names, bounding
                 boxes, and masks.
         """
-        return [
-            self.construct_result(pred, img, orig_img, img_path, proto)
-            for pred, orig_img, img_path, proto in zip(preds, orig_imgs, self.batch[0], protos)
-        ]
+        return [self.construct_result(pred, img, orig_img, img_path, proto) for (pred, orig_img, img_path, proto) in zip(preds, orig_imgs, self.batch[0], protos)]
 
     def construct_result(self, pred, img, orig_img, img_path, proto):
         """Construct a single result object from the prediction.
@@ -96,16 +87,16 @@ class SegmentationPredictor(DetectionPredictor):
         Returns:
             (Results): Result object containing the original image, image path, class names, bounding boxes, and masks.
         """
-        if pred.shape[0] == 0:  # save empty boxes
+        if pred.shape[0] == 0:
             masks = None
         elif self.args.retina_masks:
             pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], orig_img.shape)
-            masks = ops.process_mask_native(proto, pred[:, 6:], pred[:, :4], orig_img.shape[:2])  # NHW
+            masks = ops.process_mask_native(proto, pred[:, 6:], pred[:, :4], orig_img.shape[:2])
         else:
-            masks = ops.process_mask(proto, pred[:, 6:], pred[:, :4], img.shape[2:], upsample=True)  # NHW
+            masks = ops.process_mask(proto, pred[:, 6:], pred[:, :4], img.shape[2:], upsample=True)
             pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], orig_img.shape)
         if masks is not None:
-            keep = masks.amax((-2, -1)) > 0  # only keep predictions with masks
-            if not (all(keep) or getattr(self, "_feats", None) is not None):  # skip filter if native ReID enabled
-                pred, masks = pred[keep], masks[keep]  # indexing is slow
+            keep = masks.amax((-2, -1)) > 0
+            if not (all(keep) or getattr(self, '_feats', None) is not None):
+                (pred, masks) = (pred[keep], masks[keep])
         return Results(orig_img, path=img_path, names=self.model.names, boxes=pred[:, :6], masks=masks)

@@ -1,20 +1,12 @@
-# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
-from __future__ import annotations
-
 from multiprocessing.pool import ThreadPool
-
 import torch
 from PIL import Image
-
 from ultralytics.models.yolo.segment import SegmentationPredictor
 from ultralytics.utils import DEFAULT_CFG, NUM_THREADS
 from ultralytics.utils.metrics import box_iou
 from ultralytics.utils.ops import clip_boxes, clip_coords, scale_masks
 from ultralytics.utils.torch_utils import TORCH_1_10
-
 from .utils import adjust_bboxes_to_image_border
-
 
 class FastSAMPredictor(SegmentationPredictor):
     """FastSAMPredictor is specialized for fast SAM (Segment Anything Model) segmentation prediction tasks.
@@ -34,7 +26,7 @@ class FastSAMPredictor(SegmentationPredictor):
         set_prompts: Set prompts to be used during inference.
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks: dict | None = None):
+    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """Initialize the FastSAMPredictor with configuration and callbacks.
 
         This initializes a predictor specialized for Fast SAM (Segment Anything Model) segmentation tasks. The predictor
@@ -60,20 +52,17 @@ class FastSAMPredictor(SegmentationPredictor):
         Returns:
             (list[Results]): Processed results with prompts applied.
         """
-        bboxes = self.prompts.pop("bboxes", None)
-        points = self.prompts.pop("points", None)
-        labels = self.prompts.pop("labels", None)
-        texts = self.prompts.pop("texts", None)
+        bboxes = self.prompts.pop('bboxes', None)
+        points = self.prompts.pop('points', None)
+        labels = self.prompts.pop('labels', None)
+        texts = self.prompts.pop('texts', None)
         results = super().postprocess(preds, img, orig_imgs)
         for result in results:
-            full_box = torch.tensor(
-                [0, 0, result.orig_shape[1], result.orig_shape[0]], device=result.boxes.data.device, dtype=torch.float32
-            )
+            full_box = torch.tensor([0, 0, result.orig_shape[1], result.orig_shape[0]], device=result.boxes.data.device, dtype=torch.float32)
             boxes = adjust_bboxes_to_image_border(result.boxes.xyxy, result.orig_shape)
             idx = torch.nonzero(box_iou(full_box[None], boxes)[0] > 0.9).flatten()
             if idx.numel() != 0:
                 result.boxes.xyxy[idx] = full_box
-
         return self.prompt(results, bboxes=bboxes, points=points, labels=labels, texts=texts)
 
     def prompt(self, results, bboxes=None, points=None, labels=None, texts=None):
@@ -89,7 +78,7 @@ class FastSAMPredictor(SegmentationPredictor):
         Returns:
             (list[Results]): Output results filtered and determined by the provided prompts.
         """
-        if bboxes is None and points is None and texts is None:
+        if bboxes is None and points is None and (texts is None):
             return results
         prompt_results = []
         if not isinstance(results, list):
@@ -101,55 +90,46 @@ class FastSAMPredictor(SegmentationPredictor):
             masks = result.masks.data
             if masks.shape[1:] != result.orig_shape:
                 masks = (scale_masks(masks[None].float(), result.orig_shape)[0] > 0.5).byte()
-            # bboxes prompt
             idx = torch.zeros(len(result), dtype=torch.bool, device=self.device)
             if bboxes is not None:
                 boxes = torch.as_tensor(bboxes, dtype=torch.int32, device=self.device).clone()
                 boxes = boxes[None] if boxes.ndim == 1 else boxes
                 boxes = clip_boxes(boxes, result.orig_shape)
                 bbox_areas = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
-                mask_areas = torch.stack([masks[:, b[1] : b[3], b[0] : b[2]].sum(dim=(1, 2)) for b in boxes])
+                mask_areas = torch.stack([masks[:, b[1]:b[3], b[0]:b[2]].sum(dim=(1, 2)) for b in boxes])
                 full_mask_areas = torch.sum(masks, dim=(1, 2))
-
                 union = bbox_areas[:, None] + full_mask_areas - mask_areas
                 idx[torch.argmax(mask_areas / union, dim=1)] = True
             if points is not None:
                 coords = torch.as_tensor(points, dtype=torch.int32, device=self.device).clone()
                 coords = coords[None] if coords.ndim == 1 else coords
-                coords = clip_coords(coords, tuple(x - 1 for x in result.orig_shape))
+                coords = clip_coords(coords, tuple((x - 1 for x in result.orig_shape)))
                 if labels is None:
                     labels = torch.ones(coords.shape[0])
                 labels = torch.as_tensor(labels, dtype=torch.int32, device=self.device)
-                assert len(labels) == len(coords), "Labels and points must contain the same number of items."
-                point_idx = (
-                    torch.ones(len(result), dtype=torch.bool, device=self.device)
-                    if labels.sum() == 0  # all negative points
-                    else torch.zeros(len(result), dtype=torch.bool, device=self.device)
-                )
-                for point, label in zip(coords, labels):
+                assert len(labels) == len(coords), 'Labels and points must contain the same number of items.'
+                point_idx = torch.ones(len(result), dtype=torch.bool, device=self.device) if labels.sum() == 0 else torch.zeros(len(result), dtype=torch.bool, device=self.device)
+                for (point, label) in zip(coords, labels):
                     point_idx[torch.nonzero(masks[:, point[1], point[0]], as_tuple=True)[0]] = bool(label)
                 idx |= point_idx
             if texts is not None:
                 if isinstance(texts, str):
                     texts = [texts]
-                crop_ims, filter_idx = [], []
-                for i, b in enumerate(result.boxes.xyxy.tolist()):
-                    x1, y1, x2, y2 = (int(x) for x in b)
-                    if (masks[i].sum() if TORCH_1_10 else masks[i].sum(0).sum()) <= 100:  # torch 1.9 bug workaround
+                (crop_ims, filter_idx) = ([], [])
+                for (i, b) in enumerate(result.boxes.xyxy.tolist()):
+                    (x1, y1, x2, y2) = (int(x) for x in b)
+                    if (masks[i].sum() if TORCH_1_10 else masks[i].sum(0).sum()) <= 100:
                         filter_idx.append(i)
                         continue
                     crop = result.orig_img[y1:y2, x1:x2] * masks[i, y1:y2, x1:x2, None].cpu().numpy()
                     crop_ims.append(Image.fromarray(crop[:, :, ::-1]))
                 similarity = self._clip_inference(crop_ims, texts)
-                text_idx = torch.argmax(similarity, dim=-1)  # (M, )
+                text_idx = torch.argmax(similarity, dim=-1)
                 if len(filter_idx):
-                    # Remap text_idx to its original index before filtering (supports multiple text prompts)
                     ori_idxs = torch.tensor([i for i in range(len(result)) if i not in filter_idx], device=self.device)
                     text_idx = ori_idxs[text_idx]
                 idx[text_idx] = True
-
             prompt_results.append(result[idx])
-
         return prompt_results
 
     def _clip_inference(self, images, texts):
@@ -163,10 +143,9 @@ class FastSAMPredictor(SegmentationPredictor):
             (torch.Tensor): Similarity matrix between given images and texts with shape (M, N).
         """
         from ultralytics.nn.text_model import CLIP
-
-        if not hasattr(self, "clip"):
-            self.clip = CLIP("ViT-B/32", device=self.device)
-        if self.device.type == "cuda" and NUM_THREADS > 1 and len(images) >= 2 * NUM_THREADS:
+        if not hasattr(self, 'clip'):
+            self.clip = CLIP('ViT-B/32', device=self.device)
+        if self.device.type == 'cuda' and NUM_THREADS > 1 and (len(images) >= 2 * NUM_THREADS):
             with ThreadPool(NUM_THREADS) as pool:
                 images = pool.map(self.clip.image_preprocess, images)
             images = torch.stack([image.to(self.device) for image in images])
@@ -174,7 +153,7 @@ class FastSAMPredictor(SegmentationPredictor):
             images = torch.stack([self.clip.image_preprocess(image).to(self.device) for image in images])
         image_features = self.clip.encode_image(images)
         text_features = self.clip.encode_text(self.clip.tokenize(texts))
-        return text_features @ image_features.T  # (M, N)
+        return text_features @ image_features.T
 
     def set_prompts(self, prompts):
         """Set prompts to be used during inference."""
